@@ -1,6 +1,6 @@
 ---
 name: task_template
-description: "Guidelines and templates for structuring software development goals and ideas into actionable, bounded tasks using Context, To Do, Not To Do, and Acceptance Criteria, enforced by the Definition of Ready (DoR) gate."
+description: "Guidelines and templates for structuring software development goals and ideas into actionable, bounded tasks using Context/Todo/AC, enforced by the DoR gate. Activate when scoping user requests, decomposing RFCs into tasks, or creating a new task file."
 ---
 
 # Actionable Task Scoping & Decomposition
@@ -9,23 +9,14 @@ This skill establishes a rigorous framework for transforming raw goals, ideas, o
 
 ---
 
-## 1. Trigger Conditions
-Activate this skill whenever the agent or developer needs to:
-- Scope a new user request or feature goal.
-- Break down a large architecture plan (or RFC) into separate engineering tasks.
-- Create a new ticket or a task file (like `task.md`) to guide codebase changes.
-- Clarify ambiguous requirements by defining explicit work boundaries.
-
----
-
-## 2. Core Philosophy: Extreme Clarity
+## 1. Core Philosophy: Extreme Clarity
 > [!IMPORTANT]
 > A poorly scoped task is the primary source of AI hallucinations and redundant execution loops. 
 > An agent should be able to estimate effort and execute changes successfully **using the task description alone**, without needing to search for missing context.
 
 ---
 
-## 3. The 4-Section Task Template
+## 2. The 4-Section Task Template
 
 All scoped tasks must utilize this exact structural template:
 
@@ -60,7 +51,7 @@ The explicit, verifiable conditions that must be observed to prove the task is s
 
 ---
 
-## 4. The "Definition of Ready" (DoR) Gate
+## 3. The "Definition of Ready" (DoR) Gate
 
 Before starting work on *any* task, you must run the task description through this quality gate checklist. If any item is unchecked, the task is **Not Ready** and you must pause to gather context or refine boundaries first.
 

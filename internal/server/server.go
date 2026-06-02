@@ -13,6 +13,7 @@ import (
 
 	"github.com/danicat/godoctor/internal/config"
 	"github.com/danicat/godoctor/internal/instructions"
+	"github.com/danicat/godoctor/internal/lsp"
 	"github.com/danicat/godoctor/internal/prompts"
 	resgodoc "github.com/danicat/godoctor/internal/resources/godoc"
 	"github.com/danicat/godoctor/internal/roots"
@@ -110,6 +111,13 @@ func (s *Server) ServeHTTP(ctx context.Context, addr string) error {
 		if err := srv.Shutdown(context.Background()); err != nil {
 			log.Printf("MCP HTTP Server shutdown error: %v", err)
 		}
+	}()
+
+	// Register handlers and schedule persistent daemon teardown on Server context termination
+	go func() {
+		<-ctx.Done()
+		// Terminate the background gopls process gracefully
+		_ = lsp.GlobalManager.Close(context.Background())
 	}()
 
 	return srv.ListenAndServe()

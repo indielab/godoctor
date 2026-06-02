@@ -1,30 +1,19 @@
 ---
 name: go-latest-version
-description: "Guidelines and procedures for querying, verifying, and upgrading Go module dependencies and toolchains to their latest stable releases using proxy.golang.org, go list, or package registries."
+description: "Guidelines and procedures for querying, verifying, and upgrading Go module dependencies and toolchains. Activate when adding or upgrading Go packages, auditing go.mod, addressing dependency vulnerabilities, or verifying toolchain versions."
 ---
 
 # Go Dependency & Toolchain Version Verification
 
 This skill establishes a rigorous process for verifying, querying, and updating Go modules, libraries, and toolchains to their absolute latest stable releases. It prevents "version hallucination" by leveraging live Go proxies and standard tool commands instead of relying on stale offline training weights.
-
-## 1. Trigger Conditions
-Activate this skill whenever the user or agent needs to:
-- Add a new third-party Go package dependency.
-- Upgrade or audit existing dependencies in `go.mod`.
-- Determine the latest stable Go runtime toolchain version (e.g., Go 1.24+).
-- Address vulnerabilities or security notices in dependencies.
-- Fix compilation failures stemming from mismatched module versions.
-
----
-
-## 2. Core Mandate: NEVER GUESS
+## 1. Core Mandate: NEVER GUESS
 > [!IMPORTANT]
 > Go libraries evolve constantly. Internal database cutoffs are guaranteed to be outdated. Always fetch the real-time source of truth from the live registry.
 > **Trust live data over static assumptions.**
 
 ---
 
-## 3. Querying the Go Proxy (Real-Time Truth)
+## 2. Querying the Go Proxy (Real-Time Truth)
 
 The official Go Module Proxy (`proxy.golang.org`) is the authoritative source for all versioned Go modules. You can query it directly using simple shell commands, Go CLI, or HTTP endpoints.
 
@@ -53,7 +42,7 @@ curl -s https://proxy.golang.org/github.com/modelcontextprotocol/go-sdk/@v/lates
 
 ---
 
-## 4. Go SDK Toolchain Version Verification
+## 3. Go SDK Toolchain Version Verification
 
 To ensure compatibility with modern Go language features (such as Go 1.24's generic improvements or alias rules), always verify the latest Go compiler release.
 
@@ -65,7 +54,7 @@ This returns a list of the latest stable active releases (e.g., `go1.24.3`, `go1
 
 ---
 
-## 5. Safe Dependency Upgrade Workflow
+## 4. Safe Dependency Upgrade Workflow
 
 When upgrading a module within `godoctor`, always follow this sequentially gated pipeline to preserve workspace health and compile-safety:
 
@@ -95,7 +84,7 @@ godoctor smart_build
 
 ---
 
-## 6. Common Ecosystem Dependency Versions (As of May 2026)
+## 5. Common Ecosystem Dependency Versions (As of May 2026)
 Keep this live list of standard MCP and Go tools as high-quality reference baselines:
 *   **MCP Go SDK:** `github.com/modelcontextprotocol/go-sdk @ v1.6.0`
 *   **Golangci-lint:** `github.com/golangci/golangci-lint @ v1.64.5`

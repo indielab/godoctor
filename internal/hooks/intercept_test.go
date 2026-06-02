@@ -161,8 +161,8 @@ func TestShell_CatGoFile_Deny(t *testing.T) {
 	assertDeny(t, evaluate(makePayload("run_shell_command", cmdInput("cat internal/hooks/intercept.go"))), "cat subdir .go")
 }
 
-func TestShell_GrepGoFile_Deny(t *testing.T) {
-	assertDeny(t, evaluate(makePayload("run_shell_command", cmdInput("grep 'func ' main.go"))), "grep .go")
+func TestShell_GrepGoFile_Allow(t *testing.T) {
+	assertAllow(t, evaluate(makePayload("run_shell_command", cmdInput("grep 'func ' main.go"))), "grep .go")
 }
 
 // ---------------------------------------------------------------------------

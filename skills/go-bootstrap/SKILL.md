@@ -1,20 +1,13 @@
 ---
 name: go-bootstrap
-description: "Guidelines and conventions for bootstrapping Go modules, setting up project structures, and establishing reliable production patterns. Activate on module initialization or setup requests."
+description: "Guidelines and conventions for bootstrapping Go modules, project structures, and reliable production patterns (HTTP servers, database connections). Activate on module initialization, new service creation, layout scoping, or setup requests."
 ---
 
 # Go Project Bootstrapping & Layout Conventions
 
 This skill provides step-by-step instructions for establishing a modern, robust, and idiomatic Go module layout. It strictly follows official Go guidelines and emphasizes simplicity, compiler-safety, and production-ready architectures.
 
-## 1. Trigger Conditions
-Activate this skill whenever the user asks to:
-- Initialize a Go project or module.
-- Create a new Go service or application.
-- Scaffold or design a project directory layout.
-- Set up a standard library HTTP server or database connection pool.
-
-## 2. Layout Conventions
+## 1. Layout Conventions
 We adhere strictly to the official [go.dev/doc/modules/layout](https://go.dev/doc/modules/layout) conventions.
 
 ### Flat Layout (Recommended for Simple Services & Libraries)
@@ -51,7 +44,7 @@ my-app/
 - **`internal/`**: Contains private application packages. Go compiler strictly blocks other modules from importing anything under `internal/`.
 - **`pkg/`**: **NEVER** use `pkg/` in modern idiomatic Go. It is a legacy/non-standard convention that adds redundant path depth.
 
-## 3. Production Patterns (Go 1.24+)
+## 2. Production Patterns (Go 1.24+)
 
 ### HTTP Server with Graceful Shutdown
 Always implement graceful shutdown on HTTP servers to prevent dropped requests during deployments.
@@ -153,7 +146,7 @@ func initDB(ctx context.Context, dsn string) (*sql.DB, error) {
 }
 ```
 
-## 4. Bootstrapping Workflow
+## 3. Bootstrapping Workflow
 1. Use `project_init` to create the target directory and run `go mod init <module_path>`.
 2. Determine if project needs a flat layout or a nested layout. Default to **flat**.
 3. Create core files (`main.go`, `server.go`, etc.) using `smart_edit`.

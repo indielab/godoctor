@@ -1,6 +1,6 @@
 ---
 name: ready-for-release-check
-description: "Pre-release checklist and quality gate to verify codebase health, documentation accuracy, dependency compliance, security boundaries, and release artifact validity before interacting with Git."
+description: "Pre-release checklist and quality gate to verify codebase health, docs, and security before interacting with Git. Activate when preparing to tag/publish a release, concluding milestones, or running final verification on a pull request."
 ---
 
 # Pre-Release Checklist & Quality Gate
@@ -9,23 +9,14 @@ This skill establishes the authoritative pre-release quality gate checklist. It 
 
 ---
 
-## 1. Trigger Conditions
-Activate this skill whenever:
-- Preparing to tag, publish, or release a new version of the software.
-- Concluding a major milestone, refactoring, or feature implementation.
-- Running final verification gates on a pull request before merging.
-- Staging code for a production or release-candidate deployment.
-
----
-
-## 2. The Golden Rule of Releases
+## 1. The Golden Rule of Releases
 > [!CAUTION]
 > **YOU ARE ONLY ALLOWED TO TOUCH GIT (stage, commit, tag, push, or release) AFTER THIS CHECKLIST IS 100% COMPLETED AND VERIFIED.**
 > This absolute boundary ensures that we never publish invalid, uncompilable, unsecured, or poorly documented releases to the community or package registries.
 
 ---
 
-## 3. The 15-Point Pre-Release Checklist
+## 2. The 15-Point Pre-Release Checklist
 
 Before performing any Git operations to finalize a release, you **must** run and check off every single item on this list:
 
@@ -54,7 +45,7 @@ Before performing any Git operations to finalize a release, you **must** run and
 
 ---
 
-## 4. Execution Protocol
+## 3. Execution Protocol
 
 If **any** checklist item fails, you must **HALT the release process immediately**. 
 1. Fix the underlying issue (e.g. correct the broken test, fix the linter warning, update the doc).

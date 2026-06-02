@@ -1,6 +1,6 @@
 ---
 name: engineering_flow
-description: "Core engineering workflow standards detailing the prime directive of business value delivery, the 2x2 prioritization matrix, planning with RFCs and ADRs, and the strict 7-tier Evidence Hierarchy for research."
+description: "Core engineering workflow standards detailing the 2x2 prioritization matrix, RFC/ADR planning, and the 7-tier Evidence Hierarchy for research. Activate at the start of any task, when designing features, refactoring, dealing with technical ambiguity, performing research, or setting quality gates."
 ---
 
 # Codebase Engineering Workflow Standards
@@ -9,17 +9,7 @@ This skill establishes the core engineering standards, decision frameworks, and 
 
 ---
 
-## 1. Trigger Conditions
-Activate this skill at the start of every engineering task, and during any phase of the software development lifecycle (SDLC) when:
-- Designing new features or refactoring legacy components.
-- Deciding which tasks to tackle first or how to delegate them.
-- Dealing with technical ambiguity or unknown dependencies.
-- Performing research or fetching external data.
-- Establishing codebase quality gates and architectural baselines.
-
----
-
-## 2. The Prime Directive: Delivery of Business Value
+## 1. The Prime Directive: Delivery of Business Value
 
 The ultimate goal of all software engineering is the **delivery of business value**. We do not write code for the sake of coding ("vibe coding" without structure); we write code to solve real-world problems. 
 
@@ -31,7 +21,7 @@ To maximize effectiveness, we must:
 
 ---
 
-## 3. Planning & Technical Decision Pipeline
+## 2. Planning & Technical Decision Pipeline
 
 To manage the evolution of the codebase, we use a structured, conversational planning process:
 
@@ -50,7 +40,7 @@ graph TD
 
 ---
 
-## 4. Prioritization Process: The 2x2 Matrix
+## 3. Prioritization Process: The 2x2 Matrix
 
 Before beginning any work, prioritize goals using the **2x2 Prioritization Matrix**, which maps tasks based on their **Business Value** and **Technical Certainty**:
 
@@ -61,7 +51,7 @@ Before beginning any work, prioritize goals using the **2x2 Prioritization Matri
 
 ---
 
-## 5. Technical Uncertainty Reduction (The Research Process)
+## 4. Technical Uncertainty Reduction (The Research Process)
 
 When facing a **Low Technical Certainty** task, you must systematically reduce uncertainty *before* writing any production code:
 
@@ -71,7 +61,7 @@ When facing a **Low Technical Certainty** task, you must systematically reduce u
 
 ---
 
-## 6. The 7-Tier Evidence Hierarchy (NEVER GUESS)
+## 5. The 7-Tier Evidence Hierarchy (NEVER GUESS)
 
 To bypass AI model training cutoff limits and prevent library API hallucinations, all technical research must be grounded on verified evidence. Use the following hierarchy of source validity, prioritizing stronger evidence over weaker ones:
 
@@ -95,7 +85,7 @@ To bypass AI model training cutoff limits and prevent library API hallucinations
 
 ---
 
-## 7. Real-Time Version Verification & Model Drift Management
+## 6. Real-Time Version Verification & Model Drift Management
 
 AI models operate under static training data cutoff limits. This introduces **Model Drift**, where the model incorrectly assumes modern software packages, library versions, or even newer LLM models (e.g., assuming `gemini-3.5-flash` does not exist or that `gemini-2.5-pro` is the latest) do not exist.
 
@@ -108,7 +98,7 @@ To mitigate this limitation, you must follow this mandatory version verification
 
 ---
 
-## 8. Safe Release Protocol
+## 7. Safe Release Protocol
 
 As the final stage of any technical milestone, refactoring, or feature branch completion, you must respect the strict release quality gate before interacting with the Git repository for committing, tagging, or publishing.
 

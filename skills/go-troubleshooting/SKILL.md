@@ -7,15 +7,7 @@ description: "Highly actionable step-by-step checklist for diagnosing and resolv
 
 This skill outlines a rigorous, compiler-backed troubleshooting protocol for isolating, understanding, and correcting Go build and runtime errors.
 
-## 1. Trigger Conditions
-Activate this skill whenever the workspace encounters:
-- Compilation errors or syntax errors.
-- Type errors (e.g., mismatched types, undefined methods/fields).
-- Build or test suite failures.
-- Runtime panics, memory leaks, or data races.
-- Any Go-related command failure.
-
-## 2. Step-by-Step Diagnostic Checklist
+## 1. Step-by-Step Diagnostic Checklist
 
 Follow this systematic sequence to resolve issues, utilizing GoDoctor's compiler-gated tools to ensure precision:
 

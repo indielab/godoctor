@@ -151,13 +151,6 @@ func evaluateShellCommand(input map[string]interface{}) HookResponse {
 			"🛑 Blocked shell cat",
 		)
 	}
-	if strings.Contains(cmdStr, "grep") && strings.Contains(cmdStr, ".go") && !strings.Contains(cmdStr, "|") {
-		return deny(
-			"Optimization Hook: Raw shell reads are blocked for Go files. You MUST use GoDoctor's `smart_read` to inspect Go code.",
-			"🛑 Blocked shell grep",
-		)
-	}
-
 	return allow()
 }
 

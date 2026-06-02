@@ -1,6 +1,6 @@
 ---
 name: adr_template
-description: "Guidelines, best practices, and standard templates for authoring and maintaining Architecture Decision Records (ADRs) to document context, decisions, and consequences."
+description: "Guidelines, best practices, and templates for authoring Architecture Decision Records (ADRs). Activate when proposing major architectural changes, resolving design/technical debates, or documenting codebase refactorings."
 ---
 
 # Architecture Decision Records (ADRs)
@@ -9,16 +9,7 @@ This skill provides the guidance and standard templates for writing and maintain
 
 ---
 
-## 1. Trigger Conditions
-Activate this skill whenever the user or agent needs to:
-- Propose a major architectural change or technical direction.
-- Resolve technical debates or choose between competing design alternatives.
-- Document the rationale behind significant codebase refactorings.
-- Create a permanent historical log of technical decisions for future maintainers.
-
----
-
-## 2. Core Philosophy: Why Write ADRs?
+## 1. Core Philosophy: Why Write ADRs?
 
 According to Martin Fowler and standard industry practice, architecture is not about rigid blueprints but about **key decisions that are hard to change**. ADRs solve two major engineering problems:
 
@@ -27,7 +18,7 @@ According to Martin Fowler and standard industry practice, architecture is not a
 
 ---
 
-## 3. The 3 Immutable Rules of ADRs
+## 2. The 3 Immutable Rules of ADRs
 
 > [!IMPORTANT]
 > **Rule 1: Keep It Lightweight**
@@ -41,7 +32,7 @@ According to Martin Fowler and standard industry practice, architecture is not a
 
 ---
 
-## 4. Directory & Naming Conventions
+## 3. Directory & Naming Conventions
 
 All ADRs should be stored in the project's documentation folder:
 ```text
@@ -56,7 +47,7 @@ design/adr/
 
 ---
 
-## 5. Standard ADR Template
+## 4. Standard ADR Template
 
 Use this standard template when creating a new ADR file in the `design/adr/` directory:
 
@@ -90,7 +81,7 @@ How will we verify that this decision is being respected and implemented correct
 
 ---
 
-## 6. Conversational Design Checklist
+## 5. Conversational Design Checklist
 
 Before final approval, verify that the ADR answers these questions conversationally:
 - [ ] **What are the forces?** (e.g., speed, safety, token limits, ecosystem standards).

@@ -8,10 +8,10 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
-	"os/exec"
 	"strings"
 	"sync"
 
+	"github.com/danicat/godoctor/internal/lsp"
 	"github.com/danicat/godoctor/internal/roots"
 	"github.com/danicat/godoctor/internal/toolnames"
 	"github.com/danicat/godoctor/internal/tools/file/outline"
@@ -31,7 +31,7 @@ func Register(server *mcp.Server) {
 
 // Params defines the input parameters for the smart_read tool.
 type Params struct {
-	Filenames []string `json:"filenames,omitempty" jsonschema:"The absolute paths to the Go files to read. You MUST use absolute paths in multi-root workspaces."`
+	Filenames []string `json:"filenames,omitempty" jsonschema:"The absolute paths to the Go files to read."`
 	Filename  string   `json:"filename,omitempty" jsonschema:"Deprecated: use filenames instead"`
 	Outline   bool     `json:"outline,omitempty" jsonschema:"Optional: if true, returns the structure (AST) only"`
 	StartLine int      `json:"start_line,omitempty" jsonschema:"Optional: start reading from this line number"`
@@ -251,33 +251,40 @@ func enrichTypes(ctx context.Context, filename string, content []byte) string {
 		return ""
 	}
 
+	// Retrieve persistent language client connection from our manager
+	client, err := lsp.GlobalManager.Client(ctx)
+	if err != nil {
+		return ""
+	}
+
 	var mu sync.Mutex
 	var typeDefinitions []string
 	var uniqueDefs = make(map[string]bool)
 
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 10)
 
 	for _, pos := range posList {
 		wg.Add(1)
 		go func(position token.Position) {
 			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
 
-			posStr := fmt.Sprintf("%s:%d:%d", filename, position.Line, position.Column)
-			cmd := exec.CommandContext(ctx, "gopls", "definition", posStr)
-			out, err := cmd.CombinedOutput()
-			if err == nil {
-				defStr := strings.TrimSpace(string(out))
-				if defStr != "" && (strings.Contains(defStr, "struct {") || strings.Contains(defStr, "interface {") || strings.Contains(defStr, "func(")) {
-					mu.Lock()
-					if !uniqueDefs[defStr] {
-						uniqueDefs[defStr] = true
-						typeDefinitions = append(typeDefinitions, defStr)
-					}
-					mu.Unlock()
+			// Instantly query the single persistent gopls daemon over JSON-RPC instead of spawning subprocesses
+			locs, err := client.GetDefinition(ctx, filename, position.Line, position.Column)
+			if err == nil && len(locs) > 0 {
+				// To preserve format, we can query definitions output via fallback query coordinates or print URI directly
+				loc := locs[0]
+				defStr := fmt.Sprintf(
+					"%s:%d:%d -> Definition coordinate resolved",
+					loc.URI,
+					loc.Range.Start.Line+1,
+					loc.Range.Start.Character+1,
+				)
+				mu.Lock()
+				if !uniqueDefs[defStr] {
+					uniqueDefs[defStr] = true
+					typeDefinitions = append(typeDefinitions, defStr)
 				}
+				mu.Unlock()
 			}
 		}(pos)
 	}

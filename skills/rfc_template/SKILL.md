@@ -1,6 +1,6 @@
 ---
 name: rfc_template
-description: "Guidelines and templates for authoring Request for Comments (RFCs) to explore design alternatives, gather early feedback, and resolve architectural ambiguity before formalizing ADRs."
+description: "Guidelines and templates for authoring Request for Comments (RFCs). Activate when proposing significant features/refactorings, exploring design alternatives under high ambiguity, or gathering technical consensus."
 ---
 
 # Request for Comments (RFC) Framework
@@ -9,16 +9,7 @@ This skill establishes the standards, templates, and procedures for authoring **
 
 ---
 
-## 1. Trigger Conditions
-Activate this skill whenever the agent or developer needs to:
-- Propose a significant new feature or structural refactoring.
-- Explore design alternatives when there is no obvious "correct" technical choice.
-- Gather feedback and technical consensus from other team members (or agents).
-- Flush out technical details for an ambiguous problem *before* formalizing a decision.
-
----
-
-## 2. The Relationship Between RFCs and ADRs
+## 1. The Relationship Between RFCs and ADRs
 
 According to modern architectural practices (like scaling architecture conversationally):
 *   **RFC (Request for Comments):** Fluid, exploratory, collaborative, and optional. It is a tool for *discussion*. It presents multiple options, asks questions, and solicits opinions. It can be drafted, debated, modified, or rejected.
@@ -27,7 +18,7 @@ According to modern architectural practices (like scaling architecture conversat
 
 ---
 
-## 3. Directory & Naming Conventions
+## 2. Directory & Naming Conventions
 
 All RFCs must be stored in the dedicated RFC directory:
 ```text
@@ -42,7 +33,7 @@ design/rfc/
 
 ---
 
-## 4. Standard RFC Template
+## 3. Standard RFC Template
 
 Use this standard template when creating a new RFC file in the `design/rfc/` directory:
 
@@ -79,7 +70,7 @@ Provide links to official documentations, source code declarations, or industry 
 
 ---
 
-## 5. Lifecycle States
+## 4. Lifecycle States
 
 An RFC progresses through these states:
 1. **Draft:** The proposal is being written and is not yet complete.

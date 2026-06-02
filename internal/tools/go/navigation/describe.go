@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/danicat/godoctor/internal/lsp"
 	"github.com/danicat/godoctor/internal/roots"
 	"github.com/danicat/godoctor/internal/toolnames"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -24,27 +25,10 @@ func Register(server *mcp.Server) {
 
 // Params defines the input parameters for describe_symbol.
 type Params struct {
-	Filename string `json:"filename" jsonschema:"The absolute path to the Go file containing the symbol. You MUST pass the absolute path in multi-root workspaces."`
+	Filename string `json:"filename" jsonschema:"The absolute path to the Go file. Must be absolute."`
 	Line     int    `json:"line" jsonschema:"The 1-indexed line number of the symbol"`
 	Col      int    `json:"col" jsonschema:"The 1-indexed column number of the symbol"`
 }
-
-// Runner defines the interface for running commands (facilitates testing).
-type Runner interface {
-	Run(ctx context.Context, dir, name string, args ...string) (string, error)
-}
-
-type stdRunner struct{}
-
-func (r *stdRunner) Run(ctx context.Context, dir, name string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	return string(out), err
-}
-
-// CommandRunner is the standard command executor.
-var CommandRunner Runner = &stdRunner{}
 
 // Handler handles the describe_symbol tool execution.
 func Handler(ctx context.Context, req *mcp.CallToolRequest, args Params) (*mcp.CallToolResult, any, error) {
@@ -54,40 +38,28 @@ func Handler(ctx context.Context, req *mcp.CallToolRequest, args Params) (*mcp.C
 	}
 	absPath, err := roots.Global.Validate(session, args.Filename)
 	if err != nil {
-		return errorResult(err.Error()), nil, nil
+		return errorResult(err.Error()), nil, err
 	}
 
-	position := fmt.Sprintf("%s:%d:%d", absPath, args.Line, args.Col)
-
-	// 1. Run gopls definition
-	defOut, defErr := CommandRunner.Run(ctx, "", "gopls", "definition", position)
-	if defErr != nil {
-		// Clean up the error message slightly for better LLM consumption
-		errMsg := strings.TrimSpace(defOut)
-		if errMsg == "" {
-			errMsg = defErr.Error()
-		}
-		return errorResult(fmt.Sprintf("Failed to find symbol definition at %s: %s", position, errMsg)), nil, nil
+	// Retrieve active connection to the persistent gopls language server
+	client, err := lsp.GlobalManager.Client(ctx)
+	if err != nil {
+		return errorResult("failed to connect to language server: " + err.Error()), nil, err
 	}
 
-	// 2. Run gopls references
-	refOut, refErr := CommandRunner.Run(ctx, "", "gopls", "references", position)
-	var references string
-	if refErr != nil {
-		references = fmt.Sprintf("⚠️ Failed to find references: %s", strings.TrimSpace(refOut))
-	} else {
-		references = strings.TrimSpace(refOut)
-		if references == "" {
-			references = "No references found."
-		}
+	definition, err := fetchDefinition(ctx, client, absPath, args.Line, args.Col)
+	if err != nil {
+		return errorResult("Failed to query symbol definition: " + err.Error()), nil, err
 	}
 
-	// 3. Format into Markdown
+	references := fetchReferences(ctx, absPath, args.Line, args.Col)
+
+	// Format into Markdown
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "## Symbol Description for `%s:%d:%d`\n\n", filepathBase(absPath), args.Line, args.Col)
 	sb.WriteString("### Definition & Signature\n")
 	sb.WriteString("```\n")
-	sb.WriteString(strings.TrimSpace(defOut))
+	sb.WriteString(definition)
 	sb.WriteString("\n```\n\n")
 
 	sb.WriteString("### Workspace References\n")
@@ -100,6 +72,41 @@ func Handler(ctx context.Context, req *mcp.CallToolRequest, args Params) (*mcp.C
 			&mcp.TextContent{Text: sb.String()},
 		},
 	}, nil, nil
+}
+
+func fetchDefinition(ctx context.Context, client *lsp.Client, path string, line, col int) (string, error) {
+	locs, err := client.GetDefinition(ctx, path, line, col)
+	if err != nil {
+		return "", err
+	}
+	if len(locs) == 0 {
+		return "No definition found.", nil
+	}
+	loc := locs[0]
+	return fmt.Sprintf(
+		"URI: %s\nRange: %d:%d -> %d:%d",
+		loc.URI,
+		loc.Range.Start.Line+1,
+		loc.Range.Start.Character+1,
+		loc.Range.End.Line+1,
+		loc.Range.End.Character+1,
+	), nil
+}
+
+// nolint:gosec // G204: gopls is a trusted binary on the system path
+func fetchReferences(ctx context.Context, path string, line, col int) string {
+	position := fmt.Sprintf("%s:%d:%d", path, line, col)
+	cmd := exec.CommandContext(ctx, "gopls", "references", position)
+	refOut, refErr := cmd.CombinedOutput()
+
+	if refErr != nil {
+		return fmt.Sprintf("⚠️ Failed to find references: %s", strings.TrimSpace(string(refOut)))
+	}
+	references := strings.TrimSpace(string(refOut))
+	if references == "" {
+		return "No references found."
+	}
+	return references
 }
 
 func errorResult(msg string) *mcp.CallToolResult {

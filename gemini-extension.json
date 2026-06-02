@@ -1,6 +1,6 @@
 {
   "name": "godoctor",
-  "version": "0.16.4",
+  "version": "0.17.0",
   "description": "Compiler-gated Go development assistant.",
   "contextFileName": "GODOCTOR.md",
   "hooksFileName": "hooks/hooks.json",
