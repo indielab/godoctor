@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "godoctor": {
-      "command": "${pluginPath}/bin/godoctor",
+      "command": "__PLUGIN_PATH__/bin/godoctor",
       "args": [],
       "cwd": "",
       "env": null

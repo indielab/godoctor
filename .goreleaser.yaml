@@ -29,7 +29,7 @@ archives:
       - plugin.json
       - mcp_config.json
       - hooks.json
-      - GODOCTOR.md
+      - rules/**/*
       - README.md
       - LICENSE
       - skills/**/*

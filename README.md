@@ -6,26 +6,12 @@ GoDoctor is a Model Context Protocol (MCP) server and CLI extension for Go devel
 
 ### Installation
 
-#### Antigravity CLI
-Antigravity plugins are registered via placing them in a plugin directory (e.g. `.agents/plugins/` or `~/.gemini/config/plugins/`).
+Run the automatic installation script:
+```bash
+./install.sh
+```
 
-To install GoDoctor as an Antigravity plugin, place the plugin directory or its build files in one of the plugin directories (e.g. `.agents/plugins/godoctor` or `~/.gemini/config/plugins/godoctor`). Hooks and the MCP server are loaded automatically from the plugin directory layout.
-
-Once placed, GoDoctor is active in all future `agy` or Antigravity sessions. Skills, hooks, and the MCP server are all registered automatically.
-
-#### Claude Code
-1. Install the binary globally:
-   ```bash
-   go install github.com/danicat/godoctor/cmd/godoctor@latest
-   ```
-2. Register the MCP server:
-   ```bash
-   claude mcp add --transport stdio --scope user godoctor -- godoctor
-   ```
-3. Append agent instructions to your project:
-   ```bash
-   godoctor --agents >> CLAUDE.md
-   ```
+This script will automatically detect your platform (OS and architecture), fetch the latest release, download the pre-compiled binary, and install it as an Antigravity plugin via `agy plugin install`.
 
 ### Usage Instructions
 
@@ -127,19 +113,19 @@ To release a new version:
 
 1. Update the version string in `plugin.json`:
    ```bash
-   make bump-version VERSION=0.16.2
+   make bump-version VERSION=0.19.2
    ```
 
 2. Commit the manifest changes:
    ```bash
    git add plugin.json
-   git commit -m "chore: bump version to 0.16.2"
+   git commit -m "chore: bump version to 0.19.2"
    ```
 
 3. Create and push a new Git tag:
    ```bash
-   git tag v0.16.2
-   git push origin v0.16.2
+   git tag v0.19.2
+   git push origin v0.19.2
    ```
 
 The release pipeline will automatically run GoReleaser when a new tag is pushed.

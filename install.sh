@@ -58,6 +58,18 @@ echo "📦 Extracting package..."
 tar -xzf "${TEMP_DIR}/${FILENAME}" -C "${TEMP_DIR}"
 rm "${TEMP_DIR}/${FILENAME}"
 
+if [ -f "./hooks.json" ]; then
+  cp "./hooks.json" "${TEMP_DIR}/hooks.json"
+fi
+
+if [ -d "./rules" ]; then
+  cp -R "./rules" "${TEMP_DIR}/"
+fi
+
+if [ -f "./mcp_config.json" ]; then
+  cp "./mcp_config.json" "${TEMP_DIR}/mcp_config.json"
+fi
+
 # 7. Dynamically resolve variables in configuration files to absolute paths
 INSTALL_DIR="${HOME}/.gemini/config/plugins/godoctor"
 echo "🔧 Dynamically resolving plugin paths..."
@@ -66,7 +78,7 @@ replace_path() {
   local file="$1"
   local target_dir="$2"
   if [ -f "${file}" ]; then
-    sed "s|\${pluginPath}|${target_dir}|g; s|\${extensionPath}|${target_dir}|g" "${file}" > "${file}.tmp"
+    sed 's|__PLUGIN_PATH__|'"${target_dir}"'|g' "${file}" > "${file}.tmp"
     mv "${file}.tmp" "${file}"
   fi
 }

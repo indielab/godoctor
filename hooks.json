@@ -1,13 +1,13 @@
 {
-  "hooks": {
-    "BeforeTool": [
+  "godoctor": {
+    "PreToolUse": [
       {
         "matcher": "replace_file_content|multi_replace_file_content",
         "hooks": [
           {
             "name": "godoctor-block-replace",
             "type": "command",
-            "command": "${pluginPath}/bin/godoctor hooks intercept",
+            "command": "__PLUGIN_PATH__/bin/godoctor hooks intercept",
             "description": "Blocks native replace tool to enforce smart_edit"
           }
         ]
@@ -18,7 +18,7 @@
           {
             "name": "godoctor-block-read",
             "type": "command",
-            "command": "${pluginPath}/bin/godoctor hooks intercept",
+            "command": "__PLUGIN_PATH__/bin/godoctor hooks intercept",
             "description": "Blocks native read tool to enforce smart_read"
           }
         ]
@@ -29,7 +29,7 @@
           {
             "name": "godoctor-block-write",
             "type": "command",
-            "command": "${pluginPath}/bin/godoctor hooks intercept",
+            "command": "__PLUGIN_PATH__/bin/godoctor hooks intercept",
             "description": "Blocks native write tool to enforce smart_edit"
           }
         ]
@@ -40,7 +40,7 @@
           {
             "name": "godoctor-block-shell",
             "type": "command",
-            "command": "${pluginPath}/bin/godoctor hooks intercept",
+            "command": "__PLUGIN_PATH__/bin/godoctor hooks intercept",
             "description": "Blocks native shell tool to enforce smart_build"
           }
         ]
