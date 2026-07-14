@@ -82,7 +82,7 @@ func (s *State) Sync(ctx context.Context, session *mcp.ServerSession) {
 	}
 
 	initParams := session.InitializeParams()
-	if initParams == nil || initParams.Capabilities == nil || initParams.Capabilities.RootsV2 == nil {
+	if initParams == nil || initParams.Capabilities == nil {
 		s.Add(session, ".")
 		return
 	}
