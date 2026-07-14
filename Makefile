@@ -49,7 +49,7 @@ bump-version:
 		echo "Error: VERSION must be explicitly specified on the command line. Usage: make bump-version VERSION=0.16.2"; \
 		exit 1; \
 	fi
-	@python3 -c "import re; f = 'gemini-extension.json'; content = open(f).read(); new_content = re.sub(r'\"version\":\s*\"[^\"]+\"', '\"version\": \"$(VERSION)\"', content); open(f, 'w').write(new_content);"
-	@echo "Successfully bumped version to $(VERSION) in gemini-extension.json"
+	@python3 -c "import re; f = 'plugin.json'; content = open(f).read(); new_content = re.sub(r'\"version\":\s*\"[^\"]+\"', '\"version\": \"$(VERSION)\"', content); open(f, 'w').write(new_content);"
+	@echo "Successfully bumped version to $(VERSION) in plugin.json"
 
 .PHONY: all build install clean test test-cov snapshot release bump-version

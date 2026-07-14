@@ -28,7 +28,7 @@ Before performing any Git operations to finalize a release, you **must** run and
 - [ ] **5. Functional Correctness:** Does the software work exactly as expected? Manually verify standard user stories, happy path scenarios, and failure inputs to confirm the logic is sound.
 
 ### Versioning & Assets
-- [ ] **6. Version Bumps:** Are versions bumped correctly across all manifests, config files, and registry files (e.g. `gemini-extension.json`, `go.mod`, `plugin.json` or equivalent)?
+- [ ] **6. Version Bumps:** Are versions bumped correctly across all manifests, config files, and registry files (e.g. `go.mod`, `plugin.json` or equivalent)?
 - [ ] **7. Release Files Alignment:** Are all release-specific packaging files (e.g., `.goreleaser.yaml` or build script lists) fully updated to include all newly introduced files and exclude deleted ones?
 - [ ] **8. Software & Model Versions:** Are all external software, library dependencies, and LLM model identifiers verified to be up to date and correct in the real world (using the `latest-version` skill)?
 - [ ] **9. CI/CD & Release Workflow Audit:** Did you check the CI/CD workflow configurations (such as `.github/workflows/` or build pipeline scripts) to verify automated release triggers? Ensure the correct Git release tags are prepared, created, and pushed to the remote repository so the packaging run does not fail.

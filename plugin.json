@@ -1,0 +1,9 @@
+{
+  "name": "godoctor",
+  "version": "0.17.0",
+  "description": "Compiler-gated Go development assistant.",
+  "author": {
+    "name": "Danicat"
+  },
+  "license": "Apache-2.0"
+}

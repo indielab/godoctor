@@ -7,23 +7,11 @@ GoDoctor is a Model Context Protocol (MCP) server and CLI extension for Go devel
 ### Installation
 
 #### Antigravity CLI
-GoDoctor ships as a Gemini CLI-compatible extension. Install using the `gemini` command (included with Antigravity CLI), then import into `agy`:
+Antigravity plugins are registered via placing them in a plugin directory (e.g. `.agents/plugins/` or `~/.gemini/config/plugins/`).
 
-```bash
-# Step 1: install the extension (downloads the pre-compiled binary from the GitHub release)
-gemini extensions install https://github.com/danicat/godoctor
+To install GoDoctor as an Antigravity plugin, place the plugin directory or its build files in one of the plugin directories (e.g. `.agents/plugins/godoctor` or `~/.gemini/config/plugins/godoctor`). Hooks and the MCP server are loaded automatically from the plugin directory layout.
 
-# Step 2: import into Antigravity CLI
-agy plugin import gemini
-```
-
-After import, GoDoctor is active in all future `agy` sessions. Skills, hooks, and the MCP server are all registered automatically.
-
-#### Gemini CLI (standalone)
-```bash
-gemini extensions install https://github.com/danicat/godoctor
-```
-
+Once placed, GoDoctor is active in all future `agy` or Antigravity sessions. Skills, hooks, and the MCP server are all registered automatically.
 
 #### Claude Code
 1. Install the binary globally:
@@ -56,7 +44,7 @@ godoctor --list-tools
 ### Specific Documentation
 
 #### Command Interception (Hooks)
-When running inside the Antigravity or Gemini CLI, GoDoctor intercepts standard terminal commands (such as `go build`, `cat`, or `sed`) and raw file tools **when they operate on Go source files (`.go`)**. It redirects the agent to GoDoctor's specialized tools (`smart_build`, `smart_read`, and `smart_edit`). Non-Go files (Python, TypeScript, Markdown, etc.) are unaffected and pass through normally. This prevents syntax errors and conserves context window tokens.
+When running inside the Antigravity CLI, GoDoctor intercepts standard terminal commands (such as `go build`, `cat`, or `sed`) and raw file tools **when they operate on Go source files (`.go`)**. It redirects the agent to GoDoctor's specialized tools (`smart_build`, `smart_read`, and `smart_edit`). Non-Go files (Python, TypeScript, Markdown, etc.) are unaffected and pass through normally. This prevents syntax errors and conserves context window tokens.
 
 #### Configuration (Command-line Flags)
 
@@ -137,14 +125,14 @@ GoDoctor relies on Git tags for versioning. Build versions are dynamically injec
 
 To release a new version:
 
-1. Update the version string in `gemini-extension.json`:
+1. Update the version string in `plugin.json`:
    ```bash
    make bump-version VERSION=0.16.2
    ```
 
 2. Commit the manifest changes:
    ```bash
-   git add gemini-extension.json
+   git add plugin.json
    git commit -m "chore: bump version to 0.16.2"
    ```
 

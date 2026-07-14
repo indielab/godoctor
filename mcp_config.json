@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "godoctor": {
+      "command": "${pluginPath}/bin/godoctor",
+      "args": [],
+      "cwd": "",
+      "env": null
+    }
+  }
+}

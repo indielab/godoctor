@@ -26,8 +26,9 @@ archives:
       - goos: windows
         format: zip
     files:
-      - gemini-extension.json
-      - hooks/hooks.json
+      - plugin.json
+      - mcp_config.json
+      - hooks.json
       - GODOCTOR.md
       - README.md
       - LICENSE
