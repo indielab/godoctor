@@ -1,9 +1,9 @@
 {
   "name": "godoctor",
-  "version": "0.18.0",
+  "version": "0.19.0",
   "description": "Compiler-gated Go development assistant.",
   "author": {
-    "name": "Danicat"
+    "name": "Daniela Petruzalek"
   },
   "license": "Apache-2.0"
 }
