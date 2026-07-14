@@ -30,7 +30,7 @@ echo "🔍 Detected platform: ${OS}/${ARCH}"
 
 # 3. Fetch latest release version from GitHub API
 echo "🌐 Fetching latest release tag..."
-LATEST_RELEASE=$(curl -s https://api.github.com/repos/danicat/godoctor/releases/latest | grep -o '"tag_name": "[^"]*' | head -n1 | cut -d'"' -f4)
+LATEST_RELEASE=$(curl -s https://api.github.com/repos/danicat/godoctor/releases | grep -o '"tag_name": "[^"]*' | head -n1 | cut -d'"' -f4)
 
 if [ -z "${LATEST_RELEASE}" ]; then
   echo "❌ Error: Failed to fetch the latest release tag. Please try again." >&2
@@ -58,7 +58,23 @@ echo "📦 Extracting package..."
 tar -xzf "${TEMP_DIR}/${FILENAME}" -C "${TEMP_DIR}"
 rm "${TEMP_DIR}/${FILENAME}"
 
-# 7. Install via agy plugin install
+# 7. Dynamically resolve variables in configuration files to absolute paths
+INSTALL_DIR="${HOME}/.gemini/config/plugins/godoctor"
+echo "🔧 Dynamically resolving plugin paths..."
+
+replace_path() {
+  local file="$1"
+  local target_dir="$2"
+  if [ -f "${file}" ]; then
+    sed "s|\${pluginPath}|${target_dir}|g; s|\${extensionPath}|${target_dir}|g" "${file}" > "${file}.tmp"
+    mv "${file}.tmp" "${file}"
+  fi
+}
+
+replace_path "${TEMP_DIR}/mcp_config.json" "${INSTALL_DIR}"
+replace_path "${TEMP_DIR}/hooks.json" "${INSTALL_DIR}"
+
+# 8. Install via agy plugin install
 echo "🔌 Installing plugin via agy..."
 if ! agy plugin install "${TEMP_DIR}"; then
   echo "❌ Error: 'agy plugin install' failed." >&2
