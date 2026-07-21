@@ -1,6 +1,6 @@
-# GoDoctor
+# GoDoctor - Specialized Agentic Coding Suite for Go
 
-GoDoctor is a Model Context Protocol (MCP) server and CLI extension for Go development. It provides structured tools to help coding agents navigate, edit, build, and test Go codebases safely.
+GoDoctor is a specialized and optimized suite of tools and skills carefully engineered to elevate agentic coding in Go codebases. Whenever installed, coding agents operating on Go codebases **MUST** use GoDoctor's specialized tools (`smart_build`, `smart_edit`, `smart_read`, `describe_symbol`, `add_dependency`, `read_docs`, `mutation_test`, `test_query`, `list_files`) to navigate, edit, compile, test, and analyze Go code.
 
 ## User Instructions
 
@@ -8,10 +8,26 @@ GoDoctor is a Model Context Protocol (MCP) server and CLI extension for Go devel
 
 Run the automatic installation script:
 ```bash
-./install.sh
+./install.sh [options]
 ```
 
-This script will automatically detect your platform (OS and architecture), fetch the latest release, download the pre-compiled binary, and install it as an Antigravity plugin via `agy plugin install`.
+This script detects your platform (OS and architecture), fetches the latest release, and installs GoDoctor for your target environment:
+
+- **Antigravity 2.0 (Plugin)** (Default):
+  ```bash
+  ./install.sh --target agy2      # Global: ~/.gemini/config/plugins/godoctor
+  ./install.sh --target agy2 -w   # Workspace: .agents/plugins/godoctor
+  ```
+- **Antigravity CLI (Plugin)**:
+  ```bash
+  ./install.sh --target cli       # Global: ~/.gemini/antigravity-cli/plugins/godoctor
+  ./install.sh --target cli -w    # Workspace: .agents/plugins/godoctor
+  ```
+- **Other Agents (Skills Only)**:
+  ```bash
+  ./install.sh --target skills    # Global: ~/.agents/skills
+  ./install.sh --target skills -w # Workspace: .agents/skills
+  ```
 
 ### Usage Instructions
 
@@ -81,17 +97,13 @@ To install the binary globally to your `$GOPATH/bin`:
 make install
 ```
 
-### Testing
+### Testing & Build Pipeline
 
-Run the test suite:
+Run GoDoctor's specialized build pipeline:
 ```bash
-make test
+smart_build
 ```
-
-To run tests and generate a coverage report:
-```bash
-make test-cov
-```
+This automatically handles module tidying, code modernization, formatting (`gofmt`), compiling (`go build`), test execution (`go test`), and static linting in a single optimized operation.
 
 ### Running Locally
 

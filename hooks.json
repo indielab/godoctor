@@ -1,5 +1,6 @@
 {
   "godoctor": {
+    "enabled": true,
     "PreToolUse": [
       {
         "matcher": "replace_file_content|multi_replace_file_content",

@@ -141,9 +141,8 @@ func evaluateRunCommand(input map[string]interface{}) HookResponse {
 	for _, p := range buildPatterns {
 		if strings.Contains(cmdStr, p) {
 			return deny(
-				"Quality Gate Hook: Manual toolchains are blocked. You MUST use GoDoctor's "+
-					"`smart_build` tool to execute the quality gate pipeline "+
-					"(tidy -> modernize -> format -> test -> lint).",
+				"GoDoctor Mandate: Manual toolchains are blocked. GoDoctor is a specialized and optimized tool suite created to improve agentic coding in Go. You MUST use GoDoctor's "+
+					"`smart_build` tool for Go build, test, tidying, formatting, and linting workflows.",
 				"🛑 Blocked manual build/test",
 			)
 		}

@@ -45,8 +45,8 @@ var Registry = map[string]ToolDef{
 	"smart_build": {
 		Name:        "smart_build",
 		Title:       "Smart Build",
-		Description: "Enforces a strict sequential quality gate: Tidy -> Modernize -> Format -> Build -> Test -> Lint. All bypass flags are removed to guarantee entire workspace verification.",
-		Instruction: "*   **`smart_build`**: Complete compilation, unit test, and linting validation gate.\n    *   **Usage:** `smart_build(dir=\"/absolute/path/to/target-workspace\", packages=\"./...\")`\n    *   **Pipeline:** Automatically runs `go mod tidy` -> modernization -> `gofmt` -> `go build` -> `go test` -> linter.\n    *   **CRITICAL:** In multi-root workspaces, you MUST pass the absolute path of the target workspace root to `dir`.",
+		Description: "GoDoctor's specialized build pipeline: Tidy -> Modernize -> Format -> Build -> Test -> Lint. Runs `go mod tidy` -> modernization -> `gofmt` -> `go build` -> `go test` -> linter to verify workspace health.",
+		Instruction: "*   **`smart_build`**: GoDoctor's specialized build pipeline.\n    *   **Usage:** `smart_build(dir=\"/absolute/path/to/target-workspace\", packages=\"./...\")`\n    *   **Pipeline:** Automatically runs `go mod tidy` -> modernization -> `gofmt` -> `go build` -> `go test` -> linter.\n    *   **CRITICAL:** In multi-root workspaces, you MUST pass the absolute path of the target workspace root to `dir`.",
 	},
 	"add_dependency": {
 		Name:        "add_dependency",
@@ -71,7 +71,7 @@ var Registry = map[string]ToolDef{
 	"test_query": {
 		Name:        "test_query",
 		Title:       "Test Query",
-		Description: "Queries Go test results and coverage data using SQL via testquery (tq). Uses a persistent SQLite database (testquery.db) to avoid re-running tests on every query. Set rebuild=true after code changes to refresh the database. Available tables: all_tests (package, test, action, elapsed, output), all_coverage (file, function_name, start_line, end_line, count, stmt_num), test_coverage (test_name, file, start_line, end_line, count), all_code (file, line_number, content).",
+		Description: "Queries Go test results and coverage data using SQL via testquery (tq). Uses a persistent SQLite database (testquery.db) to avoid re-running tests on every query. Set rebuild=true after code changes to refresh the database. Available tables: all_tests (time, action, package, test, elapsed, output), all_coverage (package, file, start_line, start_col, end_line, end_col, stmt_num, count, function_name), test_coverage (test_name, package, file, start_line, start_col, end_line, end_col, stmt_num, count, function_name), all_code (package, file, line_number, content), metadata (key, value).",
 		Instruction: "*   **`test_query`**: Query test results with SQL.\n    *   **Usage:** `test_query(dir=\"/absolute/path/to/target-workspace\", query=\"SELECT * FROM all_coverage WHERE count = 0\")`\n    *   **Caching:** Uses a persistent `testquery.db` file. First call builds it automatically. Set `rebuild=true` after code changes.\n    *   **CRITICAL:** In multi-root workspaces, you MUST pass the absolute path of the target workspace root to `dir`.",
 	},
 
