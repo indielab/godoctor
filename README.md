@@ -123,29 +123,33 @@ GoDoctor relies on Git tags for versioning. Build versions are dynamically injec
 
 To release a new version:
 
-1. Update the version string in `plugin.json`:
+1. **Bump Version in Manifest**:
+   Update `plugin.json` to the target version:
    ```bash
-   make bump-version VERSION=0.19.2
+   make bump-version VERSION=0.20.0
    ```
 
-2. Commit the manifest changes:
+2. **Commit Changes**:
+   Stage and commit your changes using Conventional Commits format:
    ```bash
-   git add plugin.json
-   git commit -m "chore: bump version to 0.19.2"
+   git commit -m "feat: bump version to 0.20.0 and update features"
    ```
 
-3. Create and push a new Git tag:
+3. **Tag and Push to Remote**:
+   Create a matching `vX.Y.Z` Git tag and push both the `main` branch and tags to GitHub:
    ```bash
-   git tag v0.19.2
-   git push origin v0.19.2
+   git tag v0.20.0
+   git push origin main --tags
    ```
 
-The release pipeline will automatically run GoReleaser when a new tag is pushed.
+4. **Automated CI/CD Release Pipeline**:
+   Pushing a tag matching `v*` automatically triggers the GitHub Actions workflow, running GoReleaser to compile multi-platform binaries (`darwin.arm64`, `linux.x64`, etc.) and publish the GitHub Release assets consumed by `./install.sh`.
 
-To test the GoReleaser configuration locally, generate a snapshot release:
-```bash
-make snapshot
-```
+5. **Local Snapshot Testing (Optional)**:
+   To test the GoReleaser configuration locally without pushing a tag:
+   ```bash
+   make snapshot
+   ```
 
 ## License
 
