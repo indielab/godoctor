@@ -119,37 +119,23 @@ Check active tools:
 
 ### Releasing
 
-GoDoctor relies on Git tags for versioning. Build versions are dynamically injected at compile time using `git describe`.
+Releasing a new version is automated into a single one-liner command:
 
-To release a new version:
+```bash
+make bump-version VERSION=0.21.0
+```
 
-1. **Bump Version in Manifest**:
-   Update `plugin.json` to the target version:
-   ```bash
-   make bump-version VERSION=0.20.0
-   ```
+This single command automatically:
+1. Updates `"version"` in `plugin.json`.
+2. Stages and commits `plugin.json` (`chore: bump version to 0.21.0`).
+3. Creates the matching Git release tag (`v0.21.0`).
+4. Pushes `main` branch and tags to GitHub (`git push origin main --tags`), triggering the automated GoReleaser CI/CD pipeline.
 
-2. **Commit Changes**:
-   Stage and commit your changes using Conventional Commits format:
-   ```bash
-   git commit -m "feat: bump version to 0.20.0 and update features"
-   ```
-
-3. **Tag and Push to Remote**:
-   Create a matching `vX.Y.Z` Git tag and push both the `main` branch and tags to GitHub:
-   ```bash
-   git tag v0.20.0
-   git push origin main --tags
-   ```
-
-4. **Automated CI/CD Release Pipeline**:
-   Pushing a tag matching `v*` automatically triggers the GitHub Actions workflow, running GoReleaser to compile multi-platform binaries (`darwin.arm64`, `linux.x64`, etc.) and publish the GitHub Release assets consumed by `./install.sh`.
-
-5. **Local Snapshot Testing (Optional)**:
-   To test the GoReleaser configuration locally without pushing a tag:
-   ```bash
-   make snapshot
-   ```
+#### Local Snapshot Testing (Optional)
+To test the GoReleaser build configuration locally without creating a release tag:
+```bash
+make snapshot
+```
 
 ## License
 

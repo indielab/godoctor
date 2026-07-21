@@ -43,13 +43,17 @@ snapshot:
 release:
 	goreleaser release --clean
 
-# Usage: make bump-version VERSION=0.16.2
+# Usage: make bump-version VERSION=0.21.0
 bump-version:
 	@if [ "$(origin VERSION)" != "command line" ]; then \
-		echo "Error: VERSION must be explicitly specified on the command line. Usage: make bump-version VERSION=0.16.2"; \
+		echo "Error: VERSION must be explicitly specified on the command line. Usage: make bump-version VERSION=0.21.0"; \
 		exit 1; \
 	fi
 	@python3 -c "import re; f = 'plugin.json'; content = open(f).read(); new_content = re.sub(r'\"version\":\s*\"[^\"]+\"', '\"version\": \"$(VERSION)\"', content); open(f, 'w').write(new_content);"
-	@echo "Successfully bumped version to $(VERSION) in plugin.json"
+	@git add plugin.json
+	@git commit -m "chore: bump version to $(VERSION)"
+	@git tag v$(VERSION)
+	@git push origin main --tags
+	@echo "🚀 Successfully bumped plugin.json to $(VERSION), committed, tagged v$(VERSION), and pushed to remote!"
 
 .PHONY: all build install clean test test-cov snapshot release bump-version
