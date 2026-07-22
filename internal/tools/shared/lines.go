@@ -48,14 +48,8 @@ func GetSnippet(content string, lineNum int) string {
 		return ""
 	}
 
-	start := lineNum - 5
-	if start < 1 {
-		start = 1
-	}
-	end := lineNum + 5
-	if end > len(lines) {
-		end = len(lines)
-	}
+	start := max(lineNum-5, 1)
+	end := min(lineNum+5, len(lines))
 
 	var sb strings.Builder
 	for i := start; i <= end; i++ {

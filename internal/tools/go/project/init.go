@@ -5,12 +5,12 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/danicat/godoctor/internal/godoc"
 	"github.com/danicat/godoctor/internal/roots"
+	"github.com/danicat/godoctor/internal/safeshell"
 	"github.com/danicat/godoctor/internal/toolnames"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -40,7 +40,10 @@ type Runner interface {
 type stdRunner struct{}
 
 func (r *stdRunner) Run(ctx context.Context, dir, name string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
+	cmd, err := safeshell.CommandContext(ctx, name, args...)
+	if err != nil {
+		return "", err
+	}
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	return string(out), err
@@ -80,7 +83,7 @@ func Handler(ctx context.Context, req *mcp.CallToolRequest, args Params) (*mcp.C
 		sb.WriteString("- Dependencies:\n")
 		docsNeeded := make(map[string]bool)
 		for _, dep := range args.Dependencies {
-			pkgPath := strings.Split(dep, "@")[0]
+			pkgPath, _, _ := strings.Cut(dep, "@")
 			if out, err := CommandRunner.Run(ctx, absPath, "go", "get", dep); err != nil {
 				fmt.Fprintf(&sb, "  - ⚠️ Failed to get `%s`: %v\n", dep, out)
 				// Deduplicate by guessing module root

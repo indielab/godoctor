@@ -4,10 +4,10 @@ package mutation
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"strings"
 
 	"github.com/danicat/godoctor/internal/roots"
+	"github.com/danicat/godoctor/internal/safeshell"
 	"github.com/danicat/godoctor/internal/toolnames"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -43,7 +43,10 @@ func toolHandler(ctx context.Context, req *mcp.CallToolRequest, args Params) (*m
 		return errorResult(err.Error()), nil, nil
 	}
 
-	cmd := exec.CommandContext(ctx, "go", "run", "github.com/danicat/selene/cmd/selene@latest", "./...")
+	cmd, err := safeshell.CommandContext(ctx, "go", "run", "github.com/danicat/selene/cmd/selene@latest", "./...")
+	if err != nil {
+		return errorResult(fmt.Sprintf("secure execution validation failed: %v", err)), nil, nil
+	}
 	cmd.Dir = absDir
 	out, runErr := cmd.CombinedOutput()
 

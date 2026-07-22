@@ -29,7 +29,7 @@ func (s *mockServer) serve(t *testing.T) {
 
 	for {
 		var msg struct {
-			ID     interface{}     `json:"id"`
+			ID     any             `json:"id"`
 			Method string          `json:"method"`
 			Params json.RawMessage `json:"params"`
 		}
@@ -43,11 +43,11 @@ func (s *mockServer) serve(t *testing.T) {
 
 		switch msg.Method {
 		case "initialize":
-			resp := map[string]interface{}{
+			resp := map[string]any{
 				jsonrpcField: jsonrpcVersion,
 				"id":         msg.ID,
-				resultField: map[string]interface{}{
-					"capabilities": map[string]interface{}{
+				resultField: map[string]any{
+					"capabilities": map[string]any{
 						"definitionProvider": true,
 					},
 				},
@@ -56,22 +56,22 @@ func (s *mockServer) serve(t *testing.T) {
 		case "initialized":
 			// Notification, no response
 		case "textDocument/definition":
-			resp := map[string]interface{}{
+			resp := map[string]any{
 				jsonrpcField: jsonrpcVersion,
 				"id":         msg.ID,
-				resultField: []map[string]interface{}{
+				resultField: []map[string]any{
 					{
 						"uri": "file:///workspace/main.go",
-						"range": map[string]interface{}{
-							"start": map[string]interface{}{"line": 9, "character": 4},
-							"end":   map[string]interface{}{"line": 9, "character": 12},
+						"range": map[string]any{
+							"start": map[string]any{"line": 9, "character": 4},
+							"end":   map[string]any{"line": 9, "character": 12},
 						},
 					},
 				},
 			}
 			_ = enc.Encode(resp)
 		case "shutdown":
-			resp := map[string]interface{}{
+			resp := map[string]any{
 				jsonrpcField: jsonrpcVersion,
 				"id":         msg.ID,
 				resultField:  nil,

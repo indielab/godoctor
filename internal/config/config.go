@@ -38,7 +38,7 @@ func Load(args []string) (*Config, error) {
 		if s == "" {
 			return m
 		}
-		for _, name := range strings.Split(s, ",") {
+		for name := range strings.SplitSeq(s, ",") {
 			trimmed := strings.TrimSpace(name)
 			if trimmed != "" {
 				m[trimmed] = true

@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/danicat/godoctor/internal/roots"
+	"github.com/danicat/godoctor/internal/safeshell"
 	"github.com/danicat/godoctor/internal/toolnames"
 	"github.com/danicat/godoctor/internal/tools/shared"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -42,13 +44,19 @@ type Runner interface {
 type stdRunner struct{}
 
 func (r *stdRunner) Run(ctx context.Context, dir, name string, args ...string) error {
-	cmd := exec.CommandContext(ctx, name, args...)
+	cmd, err := safeshell.CommandContext(ctx, name, args...)
+	if err != nil {
+		return err
+	}
 	cmd.Dir = dir
 	return cmd.Run()
 }
 
 func (r *stdRunner) RunWithOutput(ctx context.Context, dir, name string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
+	cmd, err := safeshell.CommandContext(ctx, name, args...)
+	if err != nil {
+		return "", err
+	}
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	return string(out), err
@@ -67,15 +75,14 @@ func Handler(ctx context.Context, req *mcp.CallToolRequest, args Params) (*mcp.C
 	if req != nil {
 		session = req.Session
 	}
-	dir := args.Dir
-	if dir == "" {
-		dir = "."
+	projectDir := args.Dir
+	if projectDir == "" {
+		projectDir = "."
 	}
-	absDir, err := roots.Global.Validate(session, dir)
+	workspaceDir, err := roots.Global.Validate(session, projectDir)
 	if err != nil {
 		return result(err.Error(), true), nil, nil
 	}
-	dir = absDir
 	pkgs := args.Packages
 	if pkgs == "" {
 		pkgs = "./..."
@@ -84,19 +91,19 @@ func Handler(ctx context.Context, req *mcp.CallToolRequest, args Params) (*mcp.C
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "# Smart Build Report (`%s`)\n\n", pkgs)
 
-	runAutoFix(ctx, dir, &sb)
+	runAutoFix(ctx, workspaceDir, &sb)
 
-	if err := runBuild(ctx, dir, pkgs, &sb); err != nil {
+	if err := runBuild(ctx, workspaceDir, pkgs, &sb); err != nil {
 		//nolint:nilerr // Returning a JSON formatted tool error rather than an actual Go error
 		return result(sb.String(), true), nil, nil
 	}
 
-	if err := runTestsPhase(ctx, dir, pkgs, &sb); err != nil {
+	if err := runTestsPhase(ctx, workspaceDir, pkgs, &sb); err != nil {
 		//nolint:nilerr // Returning a JSON formatted tool error rather than an actual Go error
 		return result(sb.String(), true), nil, nil
 	}
 
-	if err := runLinterPhase(ctx, dir, pkgs, &sb); err != nil {
+	if err := runLinterPhase(ctx, workspaceDir, pkgs, &sb); err != nil {
 		//nolint:nilerr // Returning a JSON formatted tool error rather than an actual Go error
 		return result(sb.String(), true), nil, nil
 	}
@@ -104,36 +111,44 @@ func Handler(ctx context.Context, req *mcp.CallToolRequest, args Params) (*mcp.C
 	return result(sb.String(), false), nil, nil
 }
 
-func runAutoFix(ctx context.Context, dir string, sb *strings.Builder) {
-	if err := CommandRunner.Run(ctx, dir, "go", "mod", "tidy"); err != nil {
-		fmt.Fprintf(sb, "### ⚠️ Auto-Fix: `go mod tidy` Failed\n> %v\n\n", err)
+func runAutoFix(ctx context.Context, workspaceDir string, sb *strings.Builder) {
+	sb.WriteString("### 🔧 Auto-Fix & Modernize:\n")
+
+	if err := CommandRunner.Run(ctx, workspaceDir, "go", "mod", "tidy"); err != nil {
+		fmt.Fprintf(sb, "  - ❌ Go Mod Tidy: FAILED (%v)\n", err)
+	} else {
+		sb.WriteString("  - ✅ Go Mod Tidy: SUCCESS\n")
 	}
 
 	// Run Modernize directly from the CLI tool
 	runAnalyzer := func(cmd string) {
-		out, err := CommandRunner.RunWithOutput(ctx, dir, "go", "run", cmd, "-fix", "./...")
+		out, err := CommandRunner.RunWithOutput(ctx, workspaceDir, "go", "run", cmd, "-fix", "./...")
 		// These analyzers return exit code 3 if they found an issue and fixed it.
 		// Exit code 1 means a genuine failure (e.g. compile error).
 		if err != nil {
-			// We don't want to fail the whole build for a linter fix error, just warn the user.
-			if !strings.Contains(err.Error(), "exit status 3") {
-				fmt.Fprintf(sb, "  - ⚠️ Modernize `%s` Warning: %v\n    %s\n", cmd, err, strings.TrimSpace(out))
+			if strings.Contains(err.Error(), "exit status 3") {
+				sb.WriteString("  - ✅ Go Modernizer: SUCCESS (Issues found and auto-fixed)\n")
+			} else {
+				fmt.Fprintf(sb, "  - ❌ Go Modernizer: FAILED (%v)\n    %s\n", err, strings.TrimSpace(out))
 			}
+		} else {
+			sb.WriteString("  - ✅ Go Modernizer: SUCCESS (No issues found)\n")
 		}
 	}
 
-	runAnalyzer("golang.org/x/tools/go/analysis/passes/defers/cmd/defers@v0.21.0")
-	runAnalyzer("golang.org/x/tools/go/analysis/passes/errorsas/cmd/errorsas@v0.21.0")
-	runAnalyzer("golang.org/x/tools/go/analysis/passes/sortslice/cmd/sortslice@v0.21.0")
-	runAnalyzer("golang.org/x/tools/go/analysis/passes/timeformat/cmd/timeformat@v0.21.0")
+	runAnalyzer("golang.org/x/tools/go/analysis/passes/modernize/cmd/modernize@latest")
 
-	// gofmt might fail if syntax is very broken, which build will catch
-	_ = CommandRunner.Run(ctx, dir, "gofmt", "-w", ".")
+	if err := CommandRunner.Run(ctx, workspaceDir, "gofmt", "-w", "."); err != nil {
+		fmt.Fprintf(sb, "  - ❌ Go Code Formatter: FAILED (%v)\n", err)
+	} else {
+		sb.WriteString("  - ✅ Go Code Formatter: SUCCESS\n")
+	}
+	sb.WriteString("\n")
 }
 
-func runBuild(ctx context.Context, dir, pkgs string, sb *strings.Builder) error {
-	sb.WriteString("### 🛠️ Build: ")
-	buildOut, buildErr := CommandRunner.RunWithOutput(ctx, dir, "go", "build", pkgs)
+func runBuild(ctx context.Context, workspaceDir, pkgs string, sb *strings.Builder) error {
+	sb.WriteString("### 🛠  Build: ")
+	buildOut, buildErr := CommandRunner.RunWithOutput(ctx, workspaceDir, "go", "build", pkgs)
 	if buildErr != nil {
 		sb.WriteString("❌ FAILED\n\n")
 		sb.WriteString(formatOutput(buildOut))
@@ -144,7 +159,7 @@ func runBuild(ctx context.Context, dir, pkgs string, sb *strings.Builder) error 
 	return nil
 }
 
-func runTestsPhase(ctx context.Context, dir, pkgs string, sb *strings.Builder) error {
+func runTestsPhase(ctx context.Context, workspaceDir, pkgs string, sb *strings.Builder) error {
 	sb.WriteString("### 🧪 Tests: ")
 
 	// Create a temporary file for coverage
@@ -155,7 +170,7 @@ func runTestsPhase(ctx context.Context, dir, pkgs string, sb *strings.Builder) e
 
 	// -v for verbose, -coverprofile for coverage
 	testArgs := []string{"test", "-v", "-coverprofile=" + covFile, pkgs}
-	testOut, testErr := CommandRunner.RunWithOutput(ctx, dir, "go", testArgs...)
+	testOut, testErr := CommandRunner.RunWithOutput(ctx, workspaceDir, "go", testArgs...)
 
 	if testErr != nil {
 		sb.WriteString("❌ FAILED\n\n")
@@ -165,11 +180,11 @@ func runTestsPhase(ctx context.Context, dir, pkgs string, sb *strings.Builder) e
 	sb.WriteString("✅ PASS\n\n")
 
 	// Process coverage
-	sb.WriteString("#### Coverage\n")
+	sb.WriteString("#### 📊 Coverage\n")
 
 	// 1. Get Total Coverage from go tool cover -func
-	if totalCov := parseTotalCoverage(ctx, dir, covFile); totalCov != "" {
-		fmt.Fprintf(sb, "- **Total Project Coverage**: %s\n", totalCov)
+	if totalCov := parseTotalCoverage(ctx, workspaceDir, covFile); totalCov != "" {
+		fmt.Fprintf(sb, "✅ **Total Project Coverage**: %s\n", totalCov)
 	}
 
 	// 2. Parse per-package coverage from test output
@@ -178,8 +193,8 @@ func runTestsPhase(ctx context.Context, dir, pkgs string, sb *strings.Builder) e
 	return nil
 }
 
-func parseTotalCoverage(ctx context.Context, dir, covFile string) string {
-	funcOut, funcErr := CommandRunner.RunWithOutput(ctx, dir, "go", "tool", "cover", "-func="+covFile)
+func parseTotalCoverage(ctx context.Context, workspaceDir, covFile string) string {
+	funcOut, funcErr := CommandRunner.RunWithOutput(ctx, workspaceDir, "go", "tool", "cover", "-func="+covFile)
 	if funcErr != nil {
 		return ""
 	}
@@ -240,19 +255,89 @@ func findCoverageIndex(parts []string) int {
 	return -1
 }
 
-func runLinterPhase(ctx context.Context, dir, pkgs string, sb *strings.Builder) error {
+func findConfigFile(workspaceDir string) string {
+	configFiles := []string{
+		".golangci.yml",
+		".golangci.yaml",
+		".golangci.toml",
+		".golangci.json",
+	}
+	for _, file := range configFiles {
+		path := filepath.Join(workspaceDir, file)
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+	return ""
+}
+
+func parseConfigVersion(configPath string) string {
+	versionStr := "2" // Default to v2 if not found or parse fails
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		return versionStr
+	}
+	lines := strings.SplitSeq(string(content), "\n")
+	for line := range lines {
+		trimmed := strings.TrimSpace(line)
+		isVersionKey := strings.HasPrefix(trimmed, "version:") ||
+			strings.HasPrefix(trimmed, "version=") ||
+			strings.Contains(trimmed, "\"version\"")
+		if isVersionKey {
+			var digits strings.Builder
+			for _, char := range trimmed {
+				if char >= '0' && char <= '9' {
+					digits.WriteRune(char)
+				}
+			}
+			if digits.Len() > 0 {
+				versionStr = digits.String()
+				break
+			}
+		}
+	}
+	return versionStr
+}
+
+func runLinterPhase(ctx context.Context, workspaceDir, pkgs string, sb *strings.Builder) error {
 	sb.WriteString("### 🧹 Lint: ")
 
-	lintCmd := "golangci-lint"
-	lintArgs := []string{"run", pkgs}
+	configPath := findConfigFile(workspaceDir)
 
-	if _, err := CommandRunner.LookPath("golangci-lint"); err != nil {
-		lintCmd = "go"
-		lintArgs = []string{"vet", pkgs}
+	// If no .golangci file is found, fallback to go vet
+	if configPath == "" {
+		lintCmd := "go"
+		lintArgs := []string{"vet", pkgs}
 		sb.WriteString("(using `go vet`) ")
+
+		lintOut, lintErr := CommandRunner.RunWithOutput(ctx, workspaceDir, lintCmd, lintArgs...)
+		if lintErr != nil {
+			sb.WriteString("⚠️ ISSUES FOUND\n\n")
+			sb.WriteString(formatOutput(lintOut))
+			return lintErr
+		}
+		sb.WriteString("✅ PASS\n")
+		return nil
 	}
 
-	lintOut, lintErr := CommandRunner.RunWithOutput(ctx, dir, lintCmd, lintArgs...)
+	versionStr := parseConfigVersion(configPath)
+
+	// Select the appropriate major version of golangci-lint based on parsed version
+	var linterPkg string
+	if strings.HasPrefix(versionStr, "1") {
+		linterPkg = "github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.5"
+		sb.WriteString("(using `golangci-lint v1`) ")
+	} else {
+		linterPkg = "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2"
+		if versionStr != "2" {
+			fmt.Fprintf(sb, "(using `golangci-lint v%s`) ", versionStr)
+		}
+	}
+
+	lintCmd := "go"
+	lintArgs := []string{"run", linterPkg, "run", "-c", configPath, pkgs}
+
+	lintOut, lintErr := CommandRunner.RunWithOutput(ctx, workspaceDir, lintCmd, lintArgs...)
 	if lintErr != nil {
 		sb.WriteString("⚠️ ISSUES FOUND\n\n")
 		sb.WriteString(formatOutput(lintOut))

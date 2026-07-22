@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/danicat/godoctor/internal/roots"
+	"github.com/danicat/godoctor/internal/safeshell"
 )
 
 // Manager coordinates the lifecycle of the single, persistent gopls language server process.
@@ -36,7 +37,10 @@ func (m *Manager) Client(ctx context.Context) (*Client, error) {
 	}
 
 	// 1. Launch gopls as a daemon serving over stdin/stdout
-	cmd := exec.CommandContext(ctx, "gopls", "serve")
+	cmd, err := safeshell.CommandContext(ctx, "gopls", "serve")
+	if err != nil {
+		return nil, err
+	}
 
 	// Create pipe endpoints for reliable cross-talk
 	srvConn, cliConn := net.Pipe()

@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -69,11 +70,9 @@ func (s *State) Add(session *mcp.ServerSession, path string) {
 	}
 
 	rts := s.roots[session]
-	for _, r := range rts {
-		if r == abs {
-			s.mu.Unlock()
-			return
-		}
+	if slices.Contains(rts, abs) {
+		s.mu.Unlock()
+		return
 	}
 	s.roots[session] = append(rts, abs)
 
@@ -269,30 +268,40 @@ func validateCWD(absPath string, originalPath string) (string, error) {
 
 // Validate checks if the given path is within any of the registered roots for the session.
 // It returns the absolute path if valid, or an error if not.
-func (s *State) Validate(session *mcp.ServerSession, path string) (string, error) {
-	if path == "" || path == "." {
-		return s.validateEmptyPath(session)
+func (s *State) Validate(session *mcp.ServerSession, projectDir string) (string, error) {
+	if projectDir == "" || projectDir == "." {
+		workspaceDir, err := s.validateEmptyPath(session)
+		if err == nil {
+			s.Add(session, workspaceDir)
+		}
+		return workspaceDir, err
 	}
 
-	absPath, err := filepath.Abs(path)
+	workspaceDir, err := filepath.Abs(projectDir)
 	if err != nil {
 		return "", fmt.Errorf("invalid path: %w", err)
 	}
 
-	if isTempDir(absPath) {
-		return absPath, nil
+	if isTempDir(workspaceDir) {
+		return workspaceDir, nil
 	}
 
 	roots := s.Get(session)
 	if len(roots) == 0 {
-		return validateCWD(absPath, path)
+		validatedDir, err := validateCWD(workspaceDir, projectDir)
+		if err == nil {
+			s.Add(session, validatedDir)
+		}
+		return validatedDir, err
 	}
 
 	for _, root := range roots {
-		if absPath == root || strings.HasPrefix(absPath, root+string(filepath.Separator)) {
-			return absPath, nil
+		if workspaceDir == root || strings.HasPrefix(workspaceDir, root+string(filepath.Separator)) {
+			// Ensure the validated projectDir is registered as an MCP root
+			s.Add(session, workspaceDir)
+			return workspaceDir, nil
 		}
 	}
 
-	return "", fmt.Errorf("access denied: path %s is outside of registered workspace roots", path)
+	return "", fmt.Errorf("access denied: path %s is outside of registered workspace roots", projectDir)
 }

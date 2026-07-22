@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-func makePayload(toolName string, input map[string]interface{}) HookPayload {
+func makePayload(toolName string, input map[string]any) HookPayload {
 	return HookPayload{
 		ToolCall: ToolCall{
 			Name: toolName,
@@ -13,24 +13,24 @@ func makePayload(toolName string, input map[string]interface{}) HookPayload {
 	}
 }
 
-func pathInput(path string) map[string]interface{} {
-	return map[string]interface{}{"path": path}
+func pathInput(path string) map[string]any {
+	return map[string]any{"path": path}
 }
 
-func absolutePathInput(path string) map[string]interface{} {
-	return map[string]interface{}{"AbsolutePath": path}
+func absolutePathInput(path string) map[string]any {
+	return map[string]any{"AbsolutePath": path}
 }
 
-func targetFileInput(path string) map[string]interface{} {
-	return map[string]interface{}{"TargetFile": path}
+func targetFileInput(path string) map[string]any {
+	return map[string]any{"TargetFile": path}
 }
 
-func cmdInput(cmd string) map[string]interface{} {
-	return map[string]interface{}{"command": cmd}
+func cmdInput(cmd string) map[string]any {
+	return map[string]any{"command": cmd}
 }
 
-func cmdLineInput(cmd string) map[string]interface{} {
-	return map[string]interface{}{"CommandLine": cmd}
+func cmdLineInput(cmd string) map[string]any {
+	return map[string]any{"CommandLine": cmd}
 }
 
 // assertDeny checks the response is a deny and fails the test with a helpful message if not.
@@ -77,8 +77,8 @@ func TestReplace_NonGoFile_Allow(t *testing.T) {
 }
 
 func TestReplace_NoPath_Allow(t *testing.T) {
-	assertAllow(t, evaluate(makePayload("replace_file_content", map[string]interface{}{})), "replace_file_content no path")
-	assertAllow(t, evaluate(makePayload("multi_replace_file_content", map[string]interface{}{})),
+	assertAllow(t, evaluate(makePayload("replace_file_content", map[string]any{})), "replace_file_content no path")
+	assertAllow(t, evaluate(makePayload("multi_replace_file_content", map[string]any{})),
 		"multi_replace_file_content no path")
 }
 
@@ -100,7 +100,7 @@ func TestViewFile_NonGoFile_Allow(t *testing.T) {
 }
 
 func TestViewFile_NoPath_Allow(t *testing.T) {
-	assertAllow(t, evaluate(makePayload("view_file", map[string]interface{}{})), "view_file no path")
+	assertAllow(t, evaluate(makePayload("view_file", map[string]any{})), "view_file no path")
 }
 
 // ---------------------------------------------------------------------------
@@ -120,7 +120,7 @@ func TestWriteToFile_NonGoFile_Allow(t *testing.T) {
 }
 
 func TestWriteToFile_NoPath_Allow(t *testing.T) {
-	assertAllow(t, evaluate(makePayload("write_to_file", map[string]interface{}{})), "write_to_file no path")
+	assertAllow(t, evaluate(makePayload("write_to_file", map[string]any{})), "write_to_file no path")
 }
 
 // ---------------------------------------------------------------------------
@@ -254,7 +254,7 @@ func TestShell_SafeCommands_Allow(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestUnknownTool_Allow(t *testing.T) {
-	assertAllow(t, evaluate(makePayload("search_web", map[string]interface{}{"query": "golang"})), "search_web")
-	assertAllow(t, evaluate(makePayload("list_dir", map[string]interface{}{"path": "/tmp"})), "list_dir")
-	assertAllow(t, evaluate(makePayload("", map[string]interface{}{})), "empty tool name")
+	assertAllow(t, evaluate(makePayload("search_web", map[string]any{"query": "golang"})), "search_web")
+	assertAllow(t, evaluate(makePayload("list_dir", map[string]any{"path": "/tmp"})), "list_dir")
+	assertAllow(t, evaluate(makePayload("", map[string]any{})), "empty tool name")
 }

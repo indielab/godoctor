@@ -25,13 +25,15 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+const markdownMIME = "text/markdown"
+
 // Register registers the godoc resources with the server.
 func Register(server *mcp.Server) {
 	server.AddResourceTemplate(&mcp.ResourceTemplate{
 		URITemplate: "godoc://{path}",
 		Name:        "Go Documentation",
 		Description: "Documentation for Go packages and symbols (e.g. godoc://net/http or godoc://fmt.Println)",
-		MIMEType:    "text/markdown",
+		MIMEType:    markdownMIME,
 	}, ResourceHandler)
 }
 
@@ -50,7 +52,7 @@ func ResourceHandler(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.Re
 			Contents: []*mcp.ResourceContents{
 				{
 					URI:      uri,
-					MIMEType: "text/markdown",
+					MIMEType: markdownMIME,
 					Text:     doc,
 				},
 			},
@@ -68,7 +70,7 @@ func ResourceHandler(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.Re
 				Contents: []*mcp.ResourceContents{
 					{
 						URI:      uri,
-						MIMEType: "text/markdown",
+						MIMEType: markdownMIME,
 						Text:     doc,
 					},
 				},
@@ -87,7 +89,7 @@ func ResourceHandler(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.Re
 				Contents: []*mcp.ResourceContents{
 					{
 						URI:      uri,
-						MIMEType: "text/markdown",
+						MIMEType: markdownMIME,
 						Text:     doc,
 					},
 				},

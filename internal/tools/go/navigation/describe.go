@@ -4,12 +4,12 @@ package navigation
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/danicat/godoctor/internal/lsp"
 	"github.com/danicat/godoctor/internal/roots"
+	"github.com/danicat/godoctor/internal/safeshell"
 	"github.com/danicat/godoctor/internal/toolnames"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -94,10 +94,13 @@ func fetchDefinition(ctx context.Context, client *lsp.Client, path string, line,
 	), nil
 }
 
-// nolint:gosec // G204: gopls is a trusted binary on the system path
+// nolint:gosec // G204: gopls is a trusted binary on the system path, further secured by safeshell
 func fetchReferences(ctx context.Context, path string, line, col int) string {
 	position := fmt.Sprintf("%s:%d:%d", path, line, col)
-	cmd := exec.CommandContext(ctx, "gopls", "references", position)
+	cmd, err := safeshell.CommandContext(ctx, "gopls", "references", position)
+	if err != nil {
+		return fmt.Sprintf("⚠️ Failed to find references: %v", err)
+	}
 	cmd.Dir = filepath.Dir(path)
 	refOut, refErr := cmd.CombinedOutput()
 

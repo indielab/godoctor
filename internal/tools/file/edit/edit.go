@@ -7,12 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 
 	"github.com/danicat/godoctor/internal/roots"
+	"github.com/danicat/godoctor/internal/safeshell"
 	"github.com/danicat/godoctor/internal/textdist"
 	"github.com/danicat/godoctor/internal/toolnames"
 	"github.com/danicat/godoctor/internal/tools/shared"
@@ -315,7 +315,16 @@ func writeAndVerify(
 
 	if len(goFiles) > 0 {
 		args := append([]string{"check"}, goFiles...)
-		cmd := exec.CommandContext(ctx, "gopls", args...)
+		cmd, err := safeshell.CommandContext(ctx, "gopls", args...)
+		if err != nil {
+			rbErr := rollback(backups, newlyCreated)
+			msg := fmt.Sprintf("Post-edit secure validation failed: %v", err)
+			if rbErr != nil {
+				msg += fmt.Sprintf(" (rollback failure: %v)", rbErr)
+				return errorResult(msg), errors.Join(err, rbErr)
+			}
+			return errorResult(msg), err
+		}
 		cmd.Dir = workspaceRoot
 		out, cmdErr := cmd.CombinedOutput()
 		if cmdErr != nil {
@@ -412,15 +421,16 @@ func findSuggestions(ctx context.Context, errorMsg string) string {
 		}
 
 		if badSymbol != "" {
-			cmd := exec.CommandContext(ctx, "gopls", "symbols", filePath)
-			cmd.Dir = filepath.Dir(filePath)
-			out, err := cmd.CombinedOutput()
+			cmd, err := safeshell.CommandContext(ctx, "gopls", "symbols", filePath)
 			if err == nil {
-				knownSymbols := parseGoplsSymbols(string(out))
-				bestSymbol, bestDist := findClosestSymbol(badSymbol, knownSymbols)
-				if bestSymbol != "" && bestDist <= 4 {
-					suggestions = append(suggestions, fmt.Sprintf("- In %s: Did you mean '%s' instead of '%s'?",
-						filepath.Base(filePath), bestSymbol, badSymbol))
+				cmd.Dir = filepath.Dir(filePath)
+				if out, cmdErr := cmd.CombinedOutput(); cmdErr == nil {
+					knownSymbols := parseGoplsSymbols(string(out))
+					bestSymbol, bestDist := findClosestSymbol(badSymbol, knownSymbols)
+					if bestSymbol != "" && bestDist <= 4 {
+						suggestions = append(suggestions, fmt.Sprintf("- In %s: Did you mean '%s' instead of '%s'?",
+							filepath.Base(filePath), bestSymbol, badSymbol))
+					}
 				}
 			}
 		}
@@ -434,8 +444,8 @@ func findSuggestions(ctx context.Context, errorMsg string) string {
 
 func parseGoplsSymbols(symbolsOut string) []string {
 	var symbols []string
-	lines := strings.Split(symbolsOut, "\n")
-	for _, l := range lines {
+	lines := strings.SplitSeq(symbolsOut, "\n")
+	for l := range lines {
 		trimmed := strings.TrimSpace(l)
 		if trimmed == "" {
 			continue
@@ -488,8 +498,8 @@ func findBestMatch(content, search string) (int, int, float64) {
 	}
 	normContent := string(normContentRunes)
 
-	if idx := strings.Index(normContent, normSearch); idx != -1 {
-		runeIdx := len([]rune(normContent[:idx]))
+	if before, _, ok := strings.Cut(normContent, normSearch); ok {
+		runeIdx := len([]rune(before))
 		start := mapped[runeIdx].offset
 		end := mapped[runeIdx+len([]rune(normSearch))-1].offset + 1
 		return start, end, 1.0
@@ -572,10 +582,7 @@ func evaluateCandidates(
 	bestEndIdx := 0
 
 	for startIdx := range candidates {
-		endIdx := startIdx + searchLen
-		if endIdx > len(normContentRunes) {
-			endIdx = len(normContentRunes)
-		}
+		endIdx := min(startIdx+searchLen, len(normContentRunes))
 
 		window := string(normContentRunes[startIdx:endIdx])
 		score := similarity(normSearch, window)

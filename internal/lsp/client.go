@@ -57,10 +57,10 @@ type Client struct {
 }
 
 type jsonRequest struct {
-	JSONRPC string      `json:"jsonrpc"`
-	ID      int64       `json:"id,omitempty"`
-	Method  string      `json:"method"`
-	Params  interface{} `json:"params,omitempty"`
+	JSONRPC string `json:"jsonrpc"`
+	ID      int64  `json:"id,omitempty"`
+	Method  string `json:"method"`
+	Params  any    `json:"params,omitempty"`
 }
 
 type jsonResponse struct {
@@ -124,12 +124,12 @@ func (c *Client) Initialize(ctx context.Context, initialRoots []string) error {
 	}
 	c.mu.Unlock()
 
-	var result interface{}
-	err := c.call(ctx, "initialize", map[string]interface{}{
+	var result any
+	err := c.call(ctx, "initialize", map[string]any{
 		"processId":        0,
 		"workspaceFolders": folders,
-		"capabilities": map[string]interface{}{
-			"workspace": map[string]interface{}{
+		"capabilities": map[string]any{
+			"workspace": map[string]any{
 				"workspaceFolders": true,
 			},
 		},
@@ -138,7 +138,7 @@ func (c *Client) Initialize(ctx context.Context, initialRoots []string) error {
 		return err
 	}
 
-	if err := c.notify("initialized", map[string]interface{}{}); err != nil {
+	if err := c.notify("initialized", map[string]any{}); err != nil {
 		return err
 	}
 
@@ -172,13 +172,13 @@ func (c *Client) GetDefinition(ctx context.Context, filename string, line, col i
 
 // Close gracefully stops the LSP session by sending shutdown/exit sequence.
 func (c *Client) Close(ctx context.Context) error {
-	var result interface{}
+	var result any
 	_ = c.call(ctx, "shutdown", nil, &result)
 	_ = c.notify("exit", nil)
 	return c.conn.Close()
 }
 
-func (c *Client) call(ctx context.Context, method string, params interface{}, result interface{}) error {
+func (c *Client) call(ctx context.Context, method string, params any, result any) error {
 	c.mu.Lock()
 	c.idCounter++
 	id := c.idCounter
@@ -217,7 +217,7 @@ func (c *Client) call(ctx context.Context, method string, params interface{}, re
 	}
 }
 
-func (c *Client) notify(method string, params interface{}) error {
+func (c *Client) notify(method string, params any) error {
 	c.mu.Lock()
 	req := jsonRequest{
 		JSONRPC: "2.0",
@@ -282,8 +282,8 @@ func (c *Client) SyncRoots(_ context.Context, allRoots []string) error {
 		return nil
 	}
 
-	return c.notify("workspace/didChangeWorkspaceFolders", map[string]interface{}{
-		"event": map[string]interface{}{
+	return c.notify("workspace/didChangeWorkspaceFolders", map[string]any{
+		"event": map[string]any{
 			"added":   added,
 			"removed": removed,
 		},

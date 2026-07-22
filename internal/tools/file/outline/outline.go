@@ -11,11 +11,11 @@ import (
 	"go/printer"
 	"go/token"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/danicat/godoctor/internal/godoc"
+	"github.com/danicat/godoctor/internal/safeshell"
 	"github.com/danicat/godoctor/internal/toolnames"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -144,11 +144,13 @@ func GetOutline(ctx context.Context, file string) (string, []string, []error, er
 	}
 
 	// 2. Try generating outline via gopls symbols (compiler-accurate)
-	cmd := exec.CommandContext(ctx, "gopls", "symbols", file)
-	cmd.Dir = filepath.Dir(file)
-	goplsOut, cmdErr := cmd.CombinedOutput()
-	if cmdErr == nil && len(strings.TrimSpace(string(goplsOut))) > 0 {
-		return string(goplsOut), imports, errs, nil
+	cmd, err := safeshell.CommandContext(ctx, "gopls", "symbols", file)
+	if err == nil {
+		cmd.Dir = filepath.Dir(file)
+		goplsOut, cmdErr := cmd.CombinedOutput()
+		if cmdErr == nil && len(strings.TrimSpace(string(goplsOut))) > 0 {
+			return string(goplsOut), imports, errs, nil
+		}
 	}
 
 	// 3. Fallback to custom AST Outlinizer if gopls fails or is empty

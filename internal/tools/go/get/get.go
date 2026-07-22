@@ -4,11 +4,11 @@ package get
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"strings"
 
 	"github.com/danicat/godoctor/internal/godoc"
 	"github.com/danicat/godoctor/internal/roots"
+	"github.com/danicat/godoctor/internal/safeshell"
 	"github.com/danicat/godoctor/internal/toolnames"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -70,7 +70,15 @@ func Handler(ctx context.Context, req *mcp.CallToolRequest, args Params) (*mcp.C
 	}
 	cmdArgs = append(cmdArgs, args.Args...)
 	cmdArgs = append(cmdArgs, args.Packages...)
-	cmd := exec.CommandContext(ctx, "go", cmdArgs...)
+	cmd, err := safeshell.CommandContext(ctx, "go", cmdArgs...)
+	if err != nil {
+		return &mcp.CallToolResult{
+			IsError: true,
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: fmt.Sprintf("secure execution validation failed: %v", err)},
+			},
+		}, nil, nil
+	}
 	cmd.Dir = absDir
 
 	output, err := cmd.CombinedOutput()
@@ -85,7 +93,7 @@ func Handler(ctx context.Context, req *mcp.CallToolRequest, args Params) (*mcp.C
 	// Auto-fetch documentation for each package (even on failure, to provide context)
 	for _, pkg := range args.Packages {
 		// Strip version suffix if present (e.g., @latest, @v1.2.3)
-		pkgPath := strings.Split(pkg, "@")[0]
+		pkgPath, _, _ := strings.Cut(pkg, "@")
 		if docContent, _ := godoc.GetDocumentationWithFallback(ctx, pkgPath); docContent != "" {
 			sb.WriteString("\n")
 			sb.WriteString(docContent)

@@ -5,11 +5,11 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/danicat/godoctor/internal/roots"
+	"github.com/danicat/godoctor/internal/safeshell"
 	"github.com/danicat/godoctor/internal/toolnames"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -78,8 +78,11 @@ func buildDB(ctx context.Context, absDir string, args Params, dbPath string) *mc
 		pkg = "./..."
 	}
 
-	buildCmd := exec.CommandContext(ctx, "go", "run", "github.com/danicat/testquery@latest",
+	buildCmd, err := safeshell.CommandContext(ctx, "go", "run", "github.com/danicat/testquery@latest",
 		"build", "--pkg", pkg, "--output", dbFile)
+	if err != nil {
+		return errorResult(fmt.Sprintf("secure execution validation failed: %v", err))
+	}
 	buildCmd.Dir = absDir
 	out, buildErr := buildCmd.CombinedOutput()
 	buildOutput := filterNoise(string(out))
@@ -93,8 +96,11 @@ func buildDB(ctx context.Context, absDir string, args Params, dbPath string) *mc
 }
 
 func runQuery(ctx context.Context, absDir, query string) (*mcp.CallToolResult, any, error) {
-	cmd := exec.CommandContext(ctx, "go", "run", "github.com/danicat/testquery@latest",
+	cmd, err := safeshell.CommandContext(ctx, "go", "run", "github.com/danicat/testquery@latest",
 		"query", "--db", dbFile, "--format", "table", query)
+	if err != nil {
+		return errorResult(fmt.Sprintf("secure execution validation failed: %v", err)), nil, nil
+	}
 	cmd.Dir = absDir
 	out, runErr := cmd.CombinedOutput()
 

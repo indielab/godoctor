@@ -26,10 +26,10 @@ import (
 	"go/printer"
 	"go/token"
 	"os"
-	"os/exec"
 	"regexp"
 	"strings"
 
+	"github.com/danicat/godoctor/internal/safeshell"
 	"github.com/danicat/godoctor/internal/textdist"
 	"golang.org/x/tools/go/packages"
 )
@@ -200,7 +200,10 @@ type Doc struct {
 
 func resolvePackageDir(ctx context.Context, pkgPath string) (string, error) {
 	// Use 'go list' to find the directory of the package
-	cmd := exec.CommandContext(ctx, "go", "list", "-f", "{{.Dir}}", pkgPath)
+	cmd, err := safeshell.CommandContext(ctx, "go", "list", "-f", "{{.Dir}}", pkgPath)
+	if err != nil {
+		return "", err
+	}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("go list failed: %v", string(out))
@@ -670,7 +673,7 @@ func suggestPackages(ctx context.Context, query string) []string {
 
 	// Helper to add unique candidates
 	add := func(out []byte) {
-		for _, pkg := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		for pkg := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 			if pkg != "" && !seen[pkg] {
 				candidates = append(candidates, pkg)
 				seen[pkg] = true
@@ -679,21 +682,27 @@ func suggestPackages(ctx context.Context, query string) []string {
 	}
 
 	// 1. Standard Library (Reliable, works everywhere)
-	if out, err := exec.CommandContext(ctx, "go", "list", "std").Output(); err == nil {
-		add(out)
+	if cmd, err := safeshell.CommandContext(ctx, "go", "list", "std"); err == nil {
+		if out, err := cmd.Output(); err == nil {
+			add(out)
+		}
 	}
 
 	// 2. Local context (Context-dependent, might fail outside modules)
-	if out, err := exec.CommandContext(ctx, "go", "list", "all").Output(); err == nil {
-		add(out)
+	if cmd, err := safeshell.CommandContext(ctx, "go", "list", "all"); err == nil {
+		if out, err := cmd.Output(); err == nil {
+			add(out)
+		}
 	}
 
 	// 3. Parent context (If query is a path, try listing sibling packages)
 	if parts := strings.Split(query, "/"); len(parts) > 1 {
 		parent := strings.Join(parts[:len(parts)-1], "/")
 		// Attempt to list sub-packages of the parent
-		if out, err := exec.CommandContext(ctx, "go", "list", parent+"/...").Output(); err == nil {
-			add(out)
+		if cmd, err := safeshell.CommandContext(ctx, "go", "list", parent+"/..."); err == nil {
+			if out, err := cmd.Output(); err == nil {
+				add(out)
+			}
 		}
 	}
 
@@ -702,7 +711,10 @@ func suggestPackages(ctx context.Context, query string) []string {
 
 // ListSubPackages finds sub-packages within a directory using go list.
 func ListSubPackages(ctx context.Context, pkgDir string) []string {
-	cmd := exec.CommandContext(ctx, "go", "list", "-f", "{{.ImportPath}}", "./...")
+	cmd, err := safeshell.CommandContext(ctx, "go", "list", "-f", "{{.ImportPath}}", "./...")
+	if err != nil {
+		return nil
+	}
 	cmd.Dir = pkgDir
 	out, err := cmd.Output()
 	if err != nil {
@@ -722,7 +734,11 @@ func setupTempModule(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("failed to create temp dir: %w", err)
 	}
 
-	initCmd := exec.CommandContext(ctx, "go", "mod", "init", "temp_docs_fetcher")
+	initCmd, err := safeshell.CommandContext(ctx, "go", "mod", "init", "temp_docs_fetcher")
+	if err != nil {
+		_ = os.RemoveAll(tempDir)
+		return "", fmt.Errorf("failed to validate secure init command: %w", err)
+	}
 	initCmd.Dir = tempDir
 	if out, err := initCmd.CombinedOutput(); err != nil {
 		_ = os.RemoveAll(tempDir)
@@ -734,7 +750,10 @@ func setupTempModule(ctx context.Context) (string, error) {
 var vanityImportRe = regexp.MustCompile(`module declares its path as:\s+([^\s]+)`)
 
 func downloadPackage(ctx context.Context, tempDir, pkgPath string) (string, string, error) {
-	getCmd := exec.CommandContext(ctx, "go", "get", pkgPath)
+	getCmd, err := safeshell.CommandContext(ctx, "go", "get", pkgPath)
+	if err != nil {
+		return "", "", fmt.Errorf("secure validation failed for download path: %w", err)
+	}
 	getCmd.Dir = tempDir
 	out, err := getCmd.CombinedOutput()
 
@@ -746,8 +765,10 @@ func downloadPackage(ctx context.Context, tempDir, pkgPath string) (string, stri
 		if len(matches) > 1 {
 			actualPath = string(matches[1])
 			// Retry with correct path
-			//nolint:gosec // G204: Subprocess launched with variable is expected behavior.
-			retryCmd := exec.CommandContext(ctx, "go", "get", actualPath)
+			retryCmd, retryErr := safeshell.CommandContext(ctx, "go", "get", actualPath)
+			if retryErr != nil {
+				return "", "", fmt.Errorf("secure validation failed for vanity path: %w", retryErr)
+			}
 			retryCmd.Dir = tempDir
 			if retryOut, retryErr := retryCmd.CombinedOutput(); retryErr != nil {
 				return "", "", fmt.Errorf("go get failed after vanity retry: %v\nOutput: %s", retryErr, retryOut)
@@ -759,8 +780,10 @@ func downloadPackage(ctx context.Context, tempDir, pkgPath string) (string, stri
 	}
 
 	// Try to locate as a package first
-	//nolint:gosec // G204: Subprocess launched with variable is expected behavior.
-	listCmd := exec.CommandContext(ctx, "go", "list", "-f", "{{.Dir}}", actualPath)
+	listCmd, err := safeshell.CommandContext(ctx, "go", "list", "-f", "{{.Dir}}", actualPath)
+	if err != nil {
+		return "", "", fmt.Errorf("secure validation failed for list path: %w", err)
+	}
 	listCmd.Dir = tempDir
 	out, err = listCmd.CombinedOutput()
 	if err == nil {
@@ -768,8 +791,10 @@ func downloadPackage(ctx context.Context, tempDir, pkgPath string) (string, stri
 	}
 
 	// If failed, try to locate as a module (e.g. root of repo with no root package files)
-	//nolint:gosec // G204: Subprocess launched with variable is expected behavior.
-	modCmd := exec.CommandContext(ctx, "go", "list", "-m", "-f", "{{.Dir}}", actualPath)
+	modCmd, err := safeshell.CommandContext(ctx, "go", "list", "-m", "-f", "{{.Dir}}", actualPath)
+	if err != nil {
+		return "", "", fmt.Errorf("secure validation failed for locate path: %w", err)
+	}
 	modCmd.Dir = tempDir
 	out, err = modCmd.CombinedOutput()
 	if err != nil {

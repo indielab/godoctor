@@ -27,8 +27,8 @@ type HookPayload struct {
 
 // ToolCall represents the actual tool invocation being checked.
 type ToolCall struct {
-	Name string                 `json:"name"`
-	Args map[string]interface{} `json:"args"`
+	Name string         `json:"name"`
+	Args map[string]any `json:"args"`
 }
 
 // HookResponse represents the decision returned to Antigravity CLI via stdout.
@@ -108,7 +108,7 @@ func evaluate(payload HookPayload) HookResponse {
 }
 
 // isGoFile reports whether the tool input's path targets a Go source file.
-func isGoFile(input map[string]interface{}) bool {
+func isGoFile(input map[string]any) bool {
 	for _, key := range []string{"AbsolutePath", "TargetFile", keyPath, "file_path", "filename"} {
 		if val, ok := input[key]; ok {
 			if s, ok := val.(string); ok {
@@ -120,7 +120,7 @@ func isGoFile(input map[string]interface{}) bool {
 }
 
 // evaluateRunCommand parses and checks a command line string for blocked patterns.
-func evaluateRunCommand(input map[string]interface{}) HookResponse {
+func evaluateRunCommand(input map[string]any) HookResponse {
 	cmdInterface, ok := input["CommandLine"]
 	if !ok {
 		cmdInterface, ok = input["command"]
