@@ -1,6 +1,6 @@
 {
   "name": "godoctor",
-  "version": "0.20.1",
+  "version": "0.20.2",
   "description": "Specialized agentic coding suite for Go codebases.",
   "author": {
     "name": "Daniela Petruzalek"
