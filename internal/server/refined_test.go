@@ -15,12 +15,13 @@ import (
 func TestRefinedTools(t *testing.T) {
 	ctx := context.Background()
 	wd, _ := os.Getwd()
+	const fmtPkg = "fmt"
 
 	// 1. read_docs: JSON vs Markdown
 	t.Run("read_docs_formats", func(t *testing.T) {
 		// Happy Path: Markdown (Default)
 		res, _, err := docs.Handler(ctx, nil, docs.Params{
-			ImportPath: "fmt",
+			ImportPath: fmtPkg,
 			SymbolName: "Println",
 		})
 		if err != nil {
@@ -32,7 +33,7 @@ func TestRefinedTools(t *testing.T) {
 
 		// Happy Path: JSON
 		resJSON, _, err := docs.Handler(ctx, nil, docs.Params{
-			ImportPath: "fmt",
+			ImportPath: fmtPkg,
 			SymbolName: "Println",
 			Format:     "json",
 		})
@@ -45,7 +46,7 @@ func TestRefinedTools(t *testing.T) {
 
 		// Sad Path: Invalid Format
 		resErr, _, _ := docs.Handler(ctx, nil, docs.Params{
-			ImportPath: "fmt",
+			ImportPath: fmtPkg,
 			Format:     "yaml",
 		})
 		if !resErr.IsError {

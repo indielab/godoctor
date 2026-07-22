@@ -1,4 +1,4 @@
-// Package read_docs implements the documentation retrieval tool.
+// Package docs implements the documentation retrieval tool.
 package docs
 
 import (

@@ -10,6 +10,11 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+const (
+	testRoot1Unix = "/test_workspace/project1"
+	testRoot1Win  = "C:\\test_workspace\\project1"
+)
+
 func TestState_Add_And_Get(t *testing.T) {
 	state := &State{
 		roots: make(map[*mcp.ServerSession][]string),
@@ -45,9 +50,9 @@ func TestState_Validate(t *testing.T) {
 	session := &mcp.ServerSession{}
 
 	// Fix macOS TempDir bug by using safe dummy absolute paths outside of os.TempDir()
-	absRoot1 := "/test_workspace/project1"
+	absRoot1 := testRoot1Unix
 	if filepath.Separator == '\\' {
-		absRoot1 = "C:\\test_workspace\\project1"
+		absRoot1 = testRoot1Win
 	}
 
 	// Add registered root
@@ -142,10 +147,10 @@ func TestState_Validate_MultiSession(t *testing.T) {
 	session1 := &mcp.ServerSession{}
 	session2 := &mcp.ServerSession{}
 
-	root1 := "/test_workspace/project1"
+	root1 := testRoot1Unix
 	root2 := "/test_workspace/project2"
 	if filepath.Separator == '\\' {
-		root1 = "C:\\test_workspace\\project1"
+		root1 = testRoot1Win
 		root2 = "C:\\test_workspace\\project2"
 	}
 
@@ -180,9 +185,9 @@ func TestState_Validate_MultiRootCwd(t *testing.T) {
 	session := &mcp.ServerSession{}
 
 	cwd, _ := filepath.Abs(".")
-	dummyRoot := "/test_workspace/project1"
+	dummyRoot := testRoot1Unix
 	if filepath.Separator == '\\' {
-		dummyRoot = "C:\\test_workspace\\project1"
+		dummyRoot = testRoot1Win
 	}
 
 	// Register dummy root first, and the actual CWD second

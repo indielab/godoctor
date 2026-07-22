@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -43,13 +45,15 @@ type DefinitionParams struct {
 
 // Client represents the persistent gopls LSP JSON-RPC client.
 type Client struct {
-	conn      net.Conn
-	dec       *json.Decoder
-	enc       *json.Encoder
-	mu        sync.Mutex
-	idCounter int64
-	pending   map[int64]chan *jsonResponse
-	closeChan chan struct{}
+	conn           net.Conn
+	dec            *json.Decoder
+	enc            *json.Encoder
+	mu             sync.Mutex
+	idCounter      int64
+	pending        map[int64]chan *jsonResponse
+	closeChan      chan struct{}
+	workspaceRoots map[string]bool
+	isInitialized  bool
 }
 
 type jsonRequest struct {
@@ -109,17 +113,40 @@ func (c *Client) readLoop() {
 }
 
 // Initialize performs the standard initialize and initialized LSP handshake.
-func (c *Client) Initialize(ctx context.Context) error {
+func (c *Client) Initialize(ctx context.Context, initialRoots []string) error {
+	c.mu.Lock()
+	c.workspaceRoots = make(map[string]bool)
+	folders := make([]WorkspaceFolder, 0, len(initialRoots))
+	for _, root := range initialRoots {
+		uri := PathToURI(root)
+		c.workspaceRoots[uri] = true
+		folders = append(folders, WorkspaceFolder{URI: uri, Name: filepath.Base(root)})
+	}
+	c.mu.Unlock()
+
 	var result interface{}
 	err := c.call(ctx, "initialize", map[string]interface{}{
-		"processId":    0,
-		"capabilities": map[string]interface{}{},
+		"processId":        0,
+		"workspaceFolders": folders,
+		"capabilities": map[string]interface{}{
+			"workspace": map[string]interface{}{
+				"workspaceFolders": true,
+			},
+		},
 	}, &result)
 	if err != nil {
 		return err
 	}
 
-	return c.notify("initialized", map[string]interface{}{})
+	if err := c.notify("initialized", map[string]interface{}{}); err != nil {
+		return err
+	}
+
+	c.mu.Lock()
+	c.isInitialized = true
+	c.mu.Unlock()
+
+	return nil
 }
 
 // GetDefinition retrieves definition coordinates (converting 1-indexed input to 0-indexed LSP queries).
@@ -200,4 +227,65 @@ func (c *Client) notify(method string, params interface{}) error {
 	err := c.enc.Encode(req)
 	c.mu.Unlock()
 	return err
+}
+
+// WorkspaceFolder represents a workspace folder in LSP.
+type WorkspaceFolder struct {
+	URI  string `json:"uri"`
+	Name string `json:"name"`
+}
+
+// PathToURI converts an absolute path to a file:// URI, supporting Windows drive letters.
+func PathToURI(path string) string {
+	if path == "" {
+		return ""
+	}
+	// Convert backslashes to forward slashes manually to support testing Windows paths on macOS
+	path = strings.ReplaceAll(path, "\\", "/")
+	// On Windows, absolute paths like "C:/foo" need to become "file:///C:/foo"
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	return "file://" + path
+}
+
+// SyncRoots synchronizes the active workspace roots with the provided list of roots.
+func (c *Client) SyncRoots(_ context.Context, allRoots []string) error {
+	c.mu.Lock()
+	if !c.isInitialized {
+		c.mu.Unlock()
+		return nil
+	}
+
+	current := make(map[string]bool)
+	added := make([]WorkspaceFolder, 0)
+	removed := make([]WorkspaceFolder, 0)
+
+	for _, root := range allRoots {
+		uri := PathToURI(root)
+		current[uri] = true
+		if !c.workspaceRoots[uri] {
+			added = append(added, WorkspaceFolder{URI: uri, Name: filepath.Base(root)})
+		}
+	}
+
+	for uri := range c.workspaceRoots {
+		if !current[uri] {
+			removed = append(removed, WorkspaceFolder{URI: uri, Name: ""})
+		}
+	}
+
+	c.workspaceRoots = current
+	c.mu.Unlock()
+
+	if len(added) == 0 && len(removed) == 0 {
+		return nil
+	}
+
+	return c.notify("workspace/didChangeWorkspaceFolders", map[string]interface{}{
+		"event": map[string]interface{}{
+			"added":   added,
+			"removed": removed,
+		},
+	})
 }

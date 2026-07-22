@@ -24,6 +24,7 @@ func Register(server *mcp.Server) {
 
 // Params defines the input parameters.
 type Params struct {
+	//nolint:lll
 	Dir string `json:"dir,omitempty" jsonschema:"The absolute directory path to run mutation testing in. Always pass absolute paths in multi-root workspaces."`
 }
 

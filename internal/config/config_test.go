@@ -4,6 +4,11 @@ import (
 	"testing"
 )
 
+const (
+	disableFlag = "--disable"
+	reviewCode  = "review_code"
+)
+
 func TestLoad(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -16,17 +21,17 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name:         "disable single tool",
-			args:         []string{"--disable", "review_code"},
-			wantDisabled: []string{"review_code"},
+			args:         []string{disableFlag, reviewCode},
+			wantDisabled: []string{reviewCode},
 		},
 		{
 			name:         "disable multiple tools",
-			args:         []string{"--disable", "review_code,write, edit_code"},
-			wantDisabled: []string{"review_code", "write", "edit_code"},
+			args:         []string{disableFlag, reviewCode + ",write, edit_code"},
+			wantDisabled: []string{reviewCode, "write", "edit_code"},
 		},
 		{
 			name:         "disable empty",
-			args:         []string{"--disable", ""},
+			args:         []string{disableFlag, ""},
 			wantDisabled: []string{},
 		},
 	}

@@ -55,12 +55,16 @@ func assertAllow(t *testing.T, resp HookResponse, label string) {
 
 func TestReplace_GoFile_Deny(t *testing.T) {
 	// test replace_file_content
-	assertDeny(t, evaluate(makePayload("replace_file_content", pathInput("main.go"))), "replace_file_content main.go with path")
-	assertDeny(t, evaluate(makePayload("replace_file_content", targetFileInput("internal/server/handler.go"))), "replace_file_content subdir .go with TargetFile")
+	assertDeny(t, evaluate(makePayload("replace_file_content", pathInput("main.go"))),
+		"replace_file_content main.go with path")
+	assertDeny(t, evaluate(makePayload("replace_file_content", targetFileInput("internal/server/handler.go"))),
+		"replace_file_content subdir .go with TargetFile")
 
 	// test multi_replace_file_content
-	assertDeny(t, evaluate(makePayload("multi_replace_file_content", pathInput("main.go"))), "multi_replace_file_content main.go with path")
-	assertDeny(t, evaluate(makePayload("multi_replace_file_content", targetFileInput("internal/server/handler.go"))), "multi_replace_file_content subdir .go with TargetFile")
+	assertDeny(t, evaluate(makePayload("multi_replace_file_content", pathInput("main.go"))),
+		"multi_replace_file_content main.go with path")
+	assertDeny(t, evaluate(makePayload("multi_replace_file_content", targetFileInput("internal/server/handler.go"))),
+		"multi_replace_file_content subdir .go with TargetFile")
 }
 
 func TestReplace_NonGoFile_Allow(t *testing.T) {
@@ -74,7 +78,8 @@ func TestReplace_NonGoFile_Allow(t *testing.T) {
 
 func TestReplace_NoPath_Allow(t *testing.T) {
 	assertAllow(t, evaluate(makePayload("replace_file_content", map[string]interface{}{})), "replace_file_content no path")
-	assertAllow(t, evaluate(makePayload("multi_replace_file_content", map[string]interface{}{})), "multi_replace_file_content no path")
+	assertAllow(t, evaluate(makePayload("multi_replace_file_content", map[string]interface{}{})),
+		"multi_replace_file_content no path")
 }
 
 // ---------------------------------------------------------------------------
@@ -83,7 +88,8 @@ func TestReplace_NoPath_Allow(t *testing.T) {
 
 func TestViewFile_GoFile_Deny(t *testing.T) {
 	assertDeny(t, evaluate(makePayload("view_file", pathInput("cmd/godoctor/main.go"))), "view_file main.go with path")
-	assertDeny(t, evaluate(makePayload("view_file", absolutePathInput("types.go"))), "view_file types.go with AbsolutePath")
+	assertDeny(t, evaluate(makePayload("view_file", absolutePathInput("types.go"))),
+		"view_file types.go with AbsolutePath")
 }
 
 func TestViewFile_NonGoFile_Allow(t *testing.T) {
@@ -103,7 +109,8 @@ func TestViewFile_NoPath_Allow(t *testing.T) {
 
 func TestWriteToFile_GoFile_Deny(t *testing.T) {
 	assertDeny(t, evaluate(makePayload("write_to_file", pathInput("new_service.go"))), "write_to_file .go with path")
-	assertDeny(t, evaluate(makePayload("write_to_file", targetFileInput("pkg/util/helper.go"))), "write_to_file subdir .go with TargetFile")
+	assertDeny(t, evaluate(makePayload("write_to_file", targetFileInput("pkg/util/helper.go"))),
+		"write_to_file subdir .go with TargetFile")
 }
 
 func TestWriteToFile_NonGoFile_Allow(t *testing.T) {
@@ -127,7 +134,8 @@ func TestShell_GoBuild_Deny(t *testing.T) {
 
 func TestShell_GoTest_Deny(t *testing.T) {
 	assertDeny(t, evaluate(makePayload("run_command", cmdInput("go test ./..."))), "go test ./...")
-	assertDeny(t, evaluate(makePayload("run_command", cmdLineInput("go test -v -run TestFoo ./pkg/..."))), "go test -v CommandLine")
+	assertDeny(t, evaluate(makePayload("run_command", cmdLineInput("go test -v -run TestFoo ./pkg/..."))),
+		"go test -v CommandLine")
 }
 
 func TestShell_GoVet_Deny(t *testing.T) {
@@ -140,7 +148,8 @@ func TestShell_GolangciLint_Deny(t *testing.T) {
 
 func TestShell_GoGet_Deny(t *testing.T) {
 	assertDeny(t, evaluate(makePayload("run_command", cmdInput("go get github.com/pkg/errors"))), "go get")
-	assertDeny(t, evaluate(makePayload("run_command", cmdLineInput("cd myapp && go get ./..."))), "inline go get CommandLine")
+	assertDeny(t, evaluate(makePayload("run_command", cmdLineInput("cd myapp && go get ./..."))),
+		"inline go get CommandLine")
 }
 
 // ---------------------------------------------------------------------------
@@ -157,7 +166,8 @@ func TestShell_TeeOnGoFile_Deny(t *testing.T) {
 
 func TestShell_EchoRedirectToGoFile_Deny(t *testing.T) {
 	assertDeny(t, evaluate(makePayload("run_command", cmdInput("echo 'package main' > main.go"))), "echo > .go")
-	assertDeny(t, evaluate(makePayload("run_command", cmdLineInput("echo 'package main' >> main.go"))), "echo >> .go CommandLine")
+	assertDeny(t, evaluate(makePayload("run_command", cmdLineInput("echo 'package main' >> main.go"))),
+		"echo >> .go CommandLine")
 }
 
 // ---------------------------------------------------------------------------
@@ -166,7 +176,8 @@ func TestShell_EchoRedirectToGoFile_Deny(t *testing.T) {
 
 func TestShell_SedOnNonGoFile_Allow(t *testing.T) {
 	assertAllow(t, evaluate(makePayload("run_command", cmdInput("sed -i 's/foo/bar/g' config.yaml"))), "sed -i .yaml")
-	assertAllow(t, evaluate(makePayload("run_command", cmdLineInput("sed -i 's/v1/v2/' Dockerfile"))), "sed -i Dockerfile CommandLine")
+	assertAllow(t, evaluate(makePayload("run_command", cmdLineInput("sed -i 's/v1/v2/' Dockerfile"))),
+		"sed -i Dockerfile CommandLine")
 }
 
 func TestShell_EchoRedirectToNonGoFile_Allow(t *testing.T) {
@@ -183,7 +194,8 @@ func TestShell_EchoToDevNull_Allow(t *testing.T) {
 
 func TestShell_CatGoFile_Deny(t *testing.T) {
 	assertDeny(t, evaluate(makePayload("run_command", cmdInput("cat main.go"))), "cat main.go")
-	assertDeny(t, evaluate(makePayload("run_command", cmdLineInput("cat internal/hooks/intercept.go"))), "cat subdir .go CommandLine")
+	assertDeny(t, evaluate(makePayload("run_command", cmdLineInput("cat internal/hooks/intercept.go"))),
+		"cat subdir .go CommandLine")
 }
 
 func TestShell_GrepGoFile_Allow(t *testing.T) {

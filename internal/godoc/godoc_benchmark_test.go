@@ -29,7 +29,8 @@ func BenchmarkExtract(b *testing.B) {
 	// Pre-load to simulate file_read state
 	cfg := &packages.Config{
 		Context: ctx,
-		Mode:    packages.NeedTypes | packages.NeedSyntax | packages.NeedTypesInfo | packages.NeedName | packages.NeedImports | packages.NeedFiles | packages.NeedDeps,
+		Mode: packages.NeedTypes | packages.NeedSyntax | packages.NeedTypesInfo |
+			packages.NeedName | packages.NeedImports | packages.NeedFiles | packages.NeedDeps,
 	}
 	pkgs, err := packages.Load(cfg, pkgPath)
 	if err != nil || len(pkgs) == 0 {

@@ -11,6 +11,26 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+var editTests = []struct {
+	name     string
+	search   string
+	replace  string
+	expected string
+}{
+	{
+		"Simple Replace",
+		"fmt.Println(\"Hello\")",
+		"fmt.Println(\"Goodbye\")",
+		"fmt.Println(\"Goodbye\")",
+	},
+	{
+		"Whitespace Agnostic",
+		"func main() {\n\tfmt.Println(\"Goodbye\")\n}",
+		"func main() { fmt.Println(\"Modified\") }",
+		"fmt.Println(\"Modified\")",
+	},
+}
+
 func TestEdit(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "edit-test-*")
 	if err != nil {
@@ -19,7 +39,7 @@ func TestEdit(t *testing.T) {
 	//nolint:errcheck
 	defer os.RemoveAll(tmpDir)
 
-	if err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte("module test\n\ngo 1.24\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte("module test\n\ngo 1.24\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -31,31 +51,11 @@ func main() {
 }
 `
 	filePath := filepath.Join(tmpDir, "main.go")
-	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(filePath, []byte(content), 0600); err != nil {
 		t.Fatal(err)
 	}
 
-	tests := []struct {
-		name     string
-		search   string
-		replace  string
-		expected string
-	}{
-		{
-			"Simple Replace",
-			"fmt.Println(\"Hello\")",
-			"fmt.Println(\"Goodbye\")",
-			"fmt.Println(\"Goodbye\")",
-		},
-		{
-			"Whitespace Agnostic",
-			"func main() {\n\tfmt.Println(\"Goodbye\")\n}",
-			"func main() { fmt.Println(\"Modified\") }",
-			"fmt.Println(\"Modified\")",
-		},
-	}
-
-	for _, tt := range tests {
+	for _, tt := range editTests {
 		t.Run(tt.name, func(t *testing.T) {
 			res, _, err := toolHandler(context.TODO(), nil, Params{
 				Filename:   filePath,
@@ -85,7 +85,7 @@ func TestEdit_Broken(t *testing.T) {
 	}
 	//nolint:errcheck
 	defer os.RemoveAll(tmpDir)
-	if err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte("module broken\n\ngo 1.24\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte("module broken\n\ngo 1.24\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -93,7 +93,7 @@ func TestEdit_Broken(t *testing.T) {
 	roots.Global.Add(nil, tmpDir)
 
 	filePath := filepath.Join(tmpDir, "main.go")
-	if err := os.WriteFile(filePath, []byte("package main\n\nfunc main() {}"), 0644); err != nil {
+	if err := os.WriteFile(filePath, []byte("package main\n\nfunc main() {}"), 0600); err != nil {
 		t.Fatal(err)
 	}
 

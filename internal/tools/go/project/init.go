@@ -4,14 +4,15 @@ package project
 import (
 	"context"
 	"fmt"
-	"github.com/danicat/godoctor/internal/godoc"
-	"github.com/danicat/godoctor/internal/roots"
-	"github.com/danicat/godoctor/internal/toolnames"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/danicat/godoctor/internal/godoc"
+	"github.com/danicat/godoctor/internal/roots"
+	"github.com/danicat/godoctor/internal/toolnames"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Register registers the tool with the server.
@@ -26,6 +27,7 @@ func Register(server *mcp.Server) {
 
 // Params defines the input parameters.
 type Params struct {
+	//nolint:lll
 	Path         string   `json:"path" jsonschema:"Absolute target directory for the project. Always pass absolute paths in multi-root workspaces."`
 	ModulePath   string   `json:"module_path" jsonschema:"Go module path (e.g., github.com/user/repo)"`
 	Dependencies []string `json:"dependencies,omitempty" jsonschema:"Initial dependencies to install"`
@@ -44,8 +46,10 @@ func (r *stdRunner) Run(ctx context.Context, dir, name string, args ...string) (
 	return string(out), err
 }
 
+// CommandRunner is used to execute CLI commands.
 var CommandRunner Runner = &stdRunner{}
 
+// Handler executes the project_init tool.
 func Handler(ctx context.Context, req *mcp.CallToolRequest, args Params) (*mcp.CallToolResult, any, error) {
 	var session *mcp.ServerSession
 	if req != nil {
@@ -56,7 +60,7 @@ func Handler(ctx context.Context, req *mcp.CallToolRequest, args Params) (*mcp.C
 		return errorResult(err.Error()), nil, nil
 	}
 	// 1. Create Directory
-	if err := os.MkdirAll(absPath, 0755); err != nil {
+	if err := os.MkdirAll(absPath, 0750); err != nil {
 		return errorResult(fmt.Sprintf("failed to create directory: %v", err)), nil, nil
 	}
 	// 2. go mod init

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/danicat/godoctor/internal/lsp"
@@ -97,6 +98,7 @@ func fetchDefinition(ctx context.Context, client *lsp.Client, path string, line,
 func fetchReferences(ctx context.Context, path string, line, col int) string {
 	position := fmt.Sprintf("%s:%d:%d", path, line, col)
 	cmd := exec.CommandContext(ctx, "gopls", "references", position)
+	cmd.Dir = filepath.Dir(path)
 	refOut, refErr := cmd.CombinedOutput()
 
 	if refErr != nil {

@@ -12,6 +12,7 @@ import (
 	"go/token"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/danicat/godoctor/internal/godoc"
@@ -34,6 +35,7 @@ type Params struct {
 	Filename string `json:"filename" jsonschema:"Absolute path to the Go file to outline"`
 }
 
+// Handler implements the file outlining logic.
 func Handler(ctx context.Context, _ *mcp.CallToolRequest, args Params) (*mcp.CallToolResult, any, error) {
 	if args.Filename == "" {
 		return errorResult("filename cannot be empty"), nil, nil
@@ -42,7 +44,7 @@ func Handler(ctx context.Context, _ *mcp.CallToolRequest, args Params) (*mcp.Cal
 		return errorResult("filename must be a Go file (*.go)"), nil, nil
 	}
 
-	outline, imports, errs, err := GetOutline(args.Filename)
+	outline, imports, errs, err := GetOutline(ctx, args.Filename)
 	if err != nil {
 		return errorResult(fmt.Sprintf("failed to generate outline: %v", err)), nil, nil
 	}
@@ -64,52 +66,7 @@ func Handler(ctx context.Context, _ *mcp.CallToolRequest, args Params) (*mcp.Cal
 	sb.WriteString(outline)
 	sb.WriteString("\n```\n\n")
 
-	// Appendix: External Imports
-	if len(imports) > 0 {
-		sb.WriteString("## Appendix: External Imports\n")
-
-		for _, imp := range imports {
-			// Clean quotes
-			pkgPath := strings.Trim(imp, "\"")
-
-			// Skip standard library packages.
-			// Heuristic: Standard library packages generally do not have a dot in the first path segment
-			// (e.g., "fmt", "net/http", "os"), whereas external packages start with a domain name
-			// (e.g., "github.com/...", "golang.org/...").
-			parts := strings.SplitN(pkgPath, "/", 2)
-			if !strings.Contains(parts[0], ".") {
-				continue
-			}
-
-			doc, err := godoc.Load(ctx, pkgPath, "")
-
-			if err == nil && doc != nil {
-				fmt.Fprintf(&sb, "### %s\n", pkgPath)
-				sb.WriteString(doc.Description + "\n\n")
-
-				// List top 5 funcs as a hint
-				limit := 5
-				if len(doc.Funcs) > 0 {
-					sb.WriteString("**Exported Functions (Top 5):**\n```go\n")
-					count := 0
-					for _, f := range doc.Funcs {
-						if count >= limit {
-							break
-						}
-						// Extract signature only? f contains full text.
-						// Just print first line of f?
-						lines := strings.Split(f, "\n")
-						if len(lines) > 0 {
-							sb.WriteString(lines[0] + "\n")
-						}
-						count++
-					}
-					sb.WriteString("```\n")
-				}
-				sb.WriteString("\n")
-			}
-		}
-	}
+	writeExternalImportsAppendix(ctx, &sb, imports)
 
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
@@ -118,8 +75,49 @@ func Handler(ctx context.Context, _ *mcp.CallToolRequest, args Params) (*mcp.Cal
 	}, nil, nil
 }
 
+func writeExternalImportsAppendix(ctx context.Context, sb *strings.Builder, imports []string) {
+	if len(imports) == 0 {
+		return
+	}
+
+	sb.WriteString("## Appendix: External Imports\n")
+
+	for _, imp := range imports {
+		pkgPath := strings.Trim(imp, "\"")
+
+		parts := strings.SplitN(pkgPath, "/", 2)
+		if !strings.Contains(parts[0], ".") {
+			continue
+		}
+
+		doc, err := godoc.Load(ctx, pkgPath, "")
+		if err == nil && doc != nil {
+			fmt.Fprintf(sb, "### %s\n", pkgPath)
+			sb.WriteString(doc.Description + "\n\n")
+
+			limit := 5
+			if len(doc.Funcs) > 0 {
+				sb.WriteString("**Exported Functions (Top 5):**\n```go\n")
+				count := 0
+				for _, f := range doc.Funcs {
+					if count >= limit {
+						break
+					}
+					lines := strings.Split(f, "\n")
+					if len(lines) > 0 {
+						sb.WriteString(lines[0] + "\n")
+					}
+					count++
+				}
+				sb.WriteString("```\n")
+			}
+			sb.WriteString("\n")
+		}
+	}
+}
+
 // GetOutline loads a file and returns its outline, list of imports, and build errors.
-func GetOutline(file string) (string, []string, []error, error) {
+func GetOutline(ctx context.Context, file string) (string, []string, []error, error) {
 	fset := token.NewFileSet()
 	//nolint:gosec // G304: File path provided by user is expected.
 	content, err := os.ReadFile(file)
@@ -146,7 +144,8 @@ func GetOutline(file string) (string, []string, []error, error) {
 	}
 
 	// 2. Try generating outline via gopls symbols (compiler-accurate)
-	cmd := exec.Command("gopls", "symbols", file)
+	cmd := exec.CommandContext(ctx, "gopls", "symbols", file)
+	cmd.Dir = filepath.Dir(file)
 	goplsOut, cmdErr := cmd.CombinedOutput()
 	if cmdErr == nil && len(strings.TrimSpace(string(goplsOut))) > 0 {
 		return string(goplsOut), imports, errs, nil
@@ -184,34 +183,7 @@ func outlinize(f *ast.File) *ast.File {
 	}
 
 	for i, decl := range f.Decls {
-		switch fn := decl.(type) {
-		case *ast.FuncDecl:
-			newFn := *fn
-			newFn.Body = nil
-			res.Decls[i] = &newFn
-			if fn.Doc != nil {
-				allowedComments[fn.Doc] = true
-			}
-		case *ast.GenDecl:
-			res.Decls[i] = decl
-			if fn.Doc != nil {
-				allowedComments[fn.Doc] = true
-			}
-			for _, spec := range fn.Specs {
-				switch s := spec.(type) {
-				case *ast.TypeSpec:
-					if s.Doc != nil {
-						allowedComments[s.Doc] = true
-					}
-				case *ast.ValueSpec:
-					if s.Doc != nil {
-						allowedComments[s.Doc] = true
-					}
-				}
-			}
-		default:
-			res.Decls[i] = decl
-		}
+		res.Decls[i] = processDeclOutline(decl, allowedComments)
 	}
 
 	var newComments []*ast.CommentGroup
@@ -223,6 +195,37 @@ func outlinize(f *ast.File) *ast.File {
 	res.Comments = newComments
 
 	return &res
+}
+
+func processDeclOutline(decl ast.Decl, allowedComments map[*ast.CommentGroup]bool) ast.Decl {
+	switch fn := decl.(type) {
+	case *ast.FuncDecl:
+		newFn := *fn
+		newFn.Body = nil
+		if fn.Doc != nil {
+			allowedComments[fn.Doc] = true
+		}
+		return &newFn
+	case *ast.GenDecl:
+		if fn.Doc != nil {
+			allowedComments[fn.Doc] = true
+		}
+		for _, spec := range fn.Specs {
+			switch s := spec.(type) {
+			case *ast.TypeSpec:
+				if s.Doc != nil {
+					allowedComments[s.Doc] = true
+				}
+			case *ast.ValueSpec:
+				if s.Doc != nil {
+					allowedComments[s.Doc] = true
+				}
+			}
+		}
+		return decl
+	default:
+		return decl
+	}
 }
 
 func errorResult(msg string) *mcp.CallToolResult {

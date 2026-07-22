@@ -7,6 +7,8 @@ import (
 	"net"
 	"os/exec"
 	"sync"
+
+	"github.com/danicat/godoctor/internal/roots"
 )
 
 // Manager coordinates the lifecycle of the single, persistent gopls language server process.
@@ -72,13 +74,34 @@ func (m *Manager) Client(ctx context.Context) (*Client, error) {
 	m.client = NewClientWithConn(cliConn)
 
 	// Perform connection initialization handshake
-	if err := m.client.Initialize(ctx); err != nil {
+	if err := m.client.Initialize(ctx, roots.Global.GetAllRoots()); err != nil {
 		_ = m.client.Close(ctx)
 		m.client = nil
 		return nil, err
 	}
 
 	return m.client, nil
+}
+
+// Reset terminates the active connection and process (if any) and clears the client
+// so that a fresh, healthy language server is spawned on the next query.
+func (m *Manager) Reset(ctx context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.closed {
+		return nil
+	}
+
+	if m.client != nil {
+		_ = m.client.Close(ctx)
+	}
+	if m.cmd != nil && m.cmd.Process != nil {
+		_ = m.cmd.Process.Kill()
+		_, _ = m.cmd.Process.Wait()
+	}
+	m.client = nil
+	return nil
 }
 
 // Close terminates the gopls process and cleans up connection resources.

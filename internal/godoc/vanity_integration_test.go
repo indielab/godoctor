@@ -63,18 +63,21 @@ func TestGetDocumentation_VanityAndModules(t *testing.T) {
 			if err != nil {
 				t.Fatalf("GetDocumentationWithFallback failed: %v", err)
 			}
-
-			// Check for either Redirected OR Fallback note
-			hasNote := strings.Contains(doc, "> **Note:** Redirected from") || strings.Contains(doc, "> ℹ️ **Note:** Could not find")
-			if hasNote != tt.expectNote {
-				t.Errorf("Note presence mismatch: expected %v, got %v\nDoc:\n%s", tt.expectNote, hasNote, doc)
-			}
-
-			for _, content := range tt.expectContent {
-				if !strings.Contains(doc, content) {
-					t.Errorf("Documentation missing expected content: %q", content)
-				}
-			}
+			runVanityTestAssertions(t, tt.expectNote, tt.expectContent, doc)
 		})
+	}
+}
+
+func runVanityTestAssertions(t *testing.T, expectNote bool, expectContent []string, doc string) {
+	hasNote := strings.Contains(doc, "> **Note:** Redirected from") ||
+		strings.Contains(doc, "> ℹ️ **Note:** Could not find")
+	if hasNote != expectNote {
+		t.Errorf("Note presence mismatch: expected %v, got %v\nDoc:\n%s", expectNote, hasNote, doc)
+	}
+
+	for _, content := range expectContent {
+		if !strings.Contains(doc, content) {
+			t.Errorf("Documentation missing expected content: %q", content)
+		}
 	}
 }

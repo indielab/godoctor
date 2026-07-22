@@ -26,21 +26,37 @@ func Register(server *mcp.Server) {
 
 // Params defines the input parameters.
 type Params struct {
-	Dir     string `json:"dir,omitempty" jsonschema:"The absolute directory path to analyze. Always pass absolute paths in multi-root workspaces."`
-	Query   string `json:"query" jsonschema:"SQL query to run against test results (e.g. SELECT * FROM all_tests WHERE action = 'fail')"`
-	Pkg     string `json:"pkg,omitempty" jsonschema:"Go package pattern to analyze (default: ./...)"`
-	Rebuild bool   `json:"rebuild,omitempty" jsonschema:"Force rebuild of the test database before querying. Use after code changes. First call always builds."`
+	//nolint:lll
+	Dir string `json:"dir,omitempty" jsonschema:"The absolute directory path to analyze. Always pass absolute paths in multi-root workspaces."`
+	//nolint:lll
+	Query string `json:"query" jsonschema:"SQL query to run against test results (e.g. SELECT * FROM all_tests WHERE action = 'fail')"`
+	Pkg   string `json:"pkg,omitempty" jsonschema:"Go package pattern to analyze (default: ./...)"`
+	//nolint:lll
+	Rebuild bool `json:"rebuild,omitempty" jsonschema:"Force rebuild of the test database before querying. Use after code changes. First call always builds."`
 }
 
 const dbFile = "testquery.db"
 
 func toolHandler(ctx context.Context, req *mcp.CallToolRequest, args Params) (*mcp.CallToolResult, any, error) {
-	var session *mcp.ServerSession
-	if req != nil {
-		session = req.Session
+	absDir, err := validateParams(req, args)
+	if err != nil {
+		return errorResult(err.Error()), nil, nil
 	}
+
+	dbPath := filepath.Join(absDir, dbFile)
+
+	if args.Rebuild || !fileExists(dbPath) {
+		if errRes := buildDB(ctx, absDir, args, dbPath); errRes != nil {
+			return errRes, nil, nil
+		}
+	}
+
+	return runQuery(ctx, absDir, args.Query)
+}
+
+func validateParams(req *mcp.CallToolRequest, args Params) (string, error) {
 	if args.Query == "" {
-		return errorResult("query cannot be empty"), nil, nil
+		return "", fmt.Errorf("query cannot be empty")
 	}
 
 	dir := args.Dir
@@ -48,38 +64,37 @@ func toolHandler(ctx context.Context, req *mcp.CallToolRequest, args Params) (*m
 		dir = "."
 	}
 
-	absDir, err := roots.Global.Validate(session, dir)
-	if err != nil {
-		return errorResult(err.Error()), nil, nil
+	var session *mcp.ServerSession
+	if req != nil {
+		session = req.Session
 	}
 
+	return roots.Global.Validate(session, dir)
+}
+
+func buildDB(ctx context.Context, absDir string, args Params, dbPath string) *mcp.CallToolResult {
 	pkg := args.Pkg
 	if pkg == "" {
 		pkg = "./..."
 	}
 
-	dbPath := filepath.Join(absDir, dbFile)
+	buildCmd := exec.CommandContext(ctx, "go", "run", "github.com/danicat/testquery@latest",
+		"build", "--pkg", pkg, "--output", dbFile)
+	buildCmd.Dir = absDir
+	out, buildErr := buildCmd.CombinedOutput()
+	buildOutput := filterNoise(string(out))
 
-	// Build the DB if it doesn't exist or if rebuild is requested
-	if args.Rebuild || !fileExists(dbPath) {
-		buildCmd := exec.CommandContext(ctx, "go", "run", "github.com/danicat/testquery@latest",
-			"build", "--pkg", pkg, "--output", dbFile)
-		buildCmd.Dir = absDir
-		out, buildErr := buildCmd.CombinedOutput()
-		buildOutput := filterNoise(string(out))
-
-		if buildErr != nil {
-			// Build may fail if tests fail, but the DB might still be usable
-			if !fileExists(dbPath) {
-				return errorResult(fmt.Sprintf("failed to build test database: %v\n%s", buildErr, buildOutput)), nil, nil
-			}
-			// DB exists despite test failures — continue with query but warn
+	if buildErr != nil {
+		if !fileExists(dbPath) {
+			return errorResult(fmt.Sprintf("failed to build test database: %v\n%s", buildErr, buildOutput))
 		}
 	}
+	return nil
+}
 
-	// Query the persistent DB (offline mode)
+func runQuery(ctx context.Context, absDir, query string) (*mcp.CallToolResult, any, error) {
 	cmd := exec.CommandContext(ctx, "go", "run", "github.com/danicat/testquery@latest",
-		"query", "--db", dbFile, "--format", "table", args.Query)
+		"query", "--db", dbFile, "--format", "table", query)
 	cmd.Dir = absDir
 	out, runErr := cmd.CombinedOutput()
 

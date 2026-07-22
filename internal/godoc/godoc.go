@@ -157,7 +157,8 @@ func GetDocumentationWithFallback(ctx context.Context, pkgPath string) (string, 
 		parentPath := strings.Join(parts[:i], "/")
 		doc, err := Load(ctx, parentPath, "")
 		if err == nil && doc.Package != "" {
-			note := fmt.Sprintf("> ℹ️ **Note:** Could not find `%s`. Showing documentation for parent module `%s` instead.\n\n%s", pkgPath, parentPath, Render(doc))
+			note := fmt.Sprintf("> ℹ️ **Note:** Could not find `%s`.\n"+
+				"> Showing documentation for parent module `%s` instead.\n\n%s", pkgPath, parentPath, Render(doc))
 			return note, nil
 		}
 	}
@@ -215,78 +216,102 @@ func parsePackageDocs(ctx context.Context, importPath, pkgDir, symbolName, reque
 		return nil, fmt.Errorf("parser.ParseDir failed: %w", err)
 	}
 
-	// Collect all files from all packages (e.g. "http" and "http_test")
+	files := collectFiles(pkgs)
+	result := initializeDoc(ctx, importPath, requestedPath, pkgDir)
+
+	if len(files) == 0 {
+		return handleEmptyFiles(result, importPath)
+	}
+
+	targetPkg, err := doc.NewFromFiles(fset, files, importPath)
+	if err != nil {
+		return nil, fmt.Errorf("doc.NewFromFiles failed: %w", err)
+	}
+
+	setPackageName(result, targetPkg, importPath)
+
+	if symbolName == "" {
+		populatePackageDoc(fset, targetPkg, result, importPath)
+		return result, nil
+	}
+
+	return populateSymbolDoc(fset, targetPkg, result, symbolName, importPath)
+}
+
+//nolint:staticcheck // SA1019: ast.Package is deprecated but kept for backwards-compatibility.
+func collectFiles(pkgs map[string]*ast.Package) []*ast.File {
 	var files []*ast.File
 	for _, pkg := range pkgs {
 		for _, file := range pkg.Files {
 			files = append(files, file)
 		}
 	}
+	return files
+}
 
+func initializeDoc(ctx context.Context, importPath, requestedPath, pkgDir string) *Doc {
 	result := &Doc{
 		ImportPath:  importPath,
 		PkgGoDevURL: fmt.Sprintf("https://pkg.go.dev/%s", importPath),
 	}
-
 	if requestedPath != "" && requestedPath != importPath {
 		result.ResolvedPath = requestedPath
 	}
-
-	// Always look for sub-packages
 	subs := ListSubPackages(ctx, pkgDir)
 	for _, sub := range subs {
 		if sub != importPath { // Exclude self
 			result.SubPackages = append(result.SubPackages, sub)
 		}
 	}
+	return result
+}
 
-	if len(files) == 0 {
-		// If no files found, but we have subpackages, return a module overview
-		if len(result.SubPackages) > 0 {
-			result.Package = "module_root"
-			desc := fmt.Sprintf("Module root for %s. No Go source files found in the root directory, but sub-packages exist.", importPath)
-			result.Description = desc
-			return result, nil
-		}
-		return nil, fmt.Errorf("no files found in package %s", importPath)
+func handleEmptyFiles(result *Doc, importPath string) (*Doc, error) {
+	if len(result.SubPackages) > 0 {
+		result.Package = "module_root"
+		desc := fmt.Sprintf("Module root for %s. No Go source files found in the root directory,\n"+
+			"but sub-packages exist.", importPath)
+		result.Description = desc
+		return result, nil
 	}
+	return nil, fmt.Errorf("no files found in package %s", importPath)
+}
 
-	// Compute documentation using all files
-	targetPkg, err := doc.NewFromFiles(fset, files, importPath)
-	if err != nil {
-		return nil, fmt.Errorf("doc.NewFromFiles failed: %w", err)
-	}
-
+func setPackageName(result *Doc, targetPkg *doc.Package, importPath string) {
 	pkgName := targetPkg.Name
 	if pkgName == "" {
 		parts := strings.Split(importPath, "/")
 		pkgName = parts[len(parts)-1]
 	}
 	result.Package = pkgName
+}
 
-	if symbolName == "" {
-		result.Description = targetPkg.Doc
-		result.Definition = fmt.Sprintf("package %s // import %q", pkgName, importPath)
-		result.Examples = extractExamples(fset, targetPkg.Examples)
+func populatePackageDoc(fset *token.FileSet, targetPkg *doc.Package, result *Doc, importPath string) {
+	result.Description = targetPkg.Doc
+	result.Definition = fmt.Sprintf("package %s // import %q", result.Package, importPath)
+	result.Examples = extractExamples(fset, targetPkg.Examples)
 
-		// Populate symbol lists
-		for _, f := range targetPkg.Funcs {
-			result.Funcs = append(result.Funcs, bufferCode(fset, f.Decl))
-		}
-		for _, t := range targetPkg.Types {
-			// Just the type decl, not full methods unless we want detailed summary
-			result.Types = append(result.Types, bufferCode(fset, t.Decl))
-		}
-		for _, v := range targetPkg.Vars {
-			result.Vars = append(result.Vars, bufferCode(fset, v.Decl))
-		}
-		for _, c := range targetPkg.Consts {
-			result.Consts = append(result.Consts, bufferCode(fset, c.Decl))
-		}
-
-		return result, nil
+	for _, f := range targetPkg.Funcs {
+		result.Funcs = append(result.Funcs, bufferCode(fset, f.Decl))
 	}
+	for _, t := range targetPkg.Types {
+		result.Types = append(result.Types, bufferCode(fset, t.Decl))
+	}
+	for _, v := range targetPkg.Vars {
+		result.Vars = append(result.Vars, bufferCode(fset, v.Decl))
+	}
+	for _, c := range targetPkg.Consts {
+		result.Consts = append(result.Consts, bufferCode(fset, c.Decl))
+	}
+}
 
+func populateSymbolDoc(
+	fset *token.FileSet,
+	targetPkg *doc.Package,
+	result *Doc,
+	symbolName,
+	importPath string,
+) (*Doc, error) {
 	result.SymbolName = symbolName
 	result.PkgGoDevURL = fmt.Sprintf("https://pkg.go.dev/%s#%s", importPath, symbolName)
 
@@ -299,7 +324,6 @@ func parsePackageDocs(ctx context.Context, importPath, pkgDir, symbolName, reque
 		}
 		return nil, errors.New(msg)
 	}
-
 	return result, nil
 }
 
@@ -472,7 +496,9 @@ func Render(doc *Doc) string {
 
 	if doc.ResolvedPath != "" {
 		if strings.HasPrefix(doc.ResolvedPath, doc.ImportPath) {
-			fmt.Fprintf(&buf, "> ℹ️ **Note:** Could not find `%s`. Showing documentation for parent module `%s` instead.\n\n", doc.ResolvedPath, doc.ImportPath)
+			fmt.Fprintf(&buf, "> ℹ️ **Note:** Could not find `%s`.\n"+
+				"> Showing documentation for parent module `%s` instead.\n\n",
+				doc.ResolvedPath, doc.ImportPath)
 		} else {
 			fmt.Fprintf(&buf, "> **Note:** Redirected from %s\n\n", doc.ResolvedPath)
 		}

@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/danicat/godoctor/internal/config"
 	"github.com/danicat/godoctor/internal/instructions"
@@ -23,12 +24,12 @@ import (
 	"github.com/danicat/godoctor/internal/tools/file/edit"
 	"github.com/danicat/godoctor/internal/tools/file/list"
 	"github.com/danicat/godoctor/internal/tools/file/read"
+	"github.com/danicat/godoctor/internal/tools/go/build"
 	"github.com/danicat/godoctor/internal/tools/go/docs"
 	"github.com/danicat/godoctor/internal/tools/go/get"
 	"github.com/danicat/godoctor/internal/tools/go/mutation"
 	"github.com/danicat/godoctor/internal/tools/go/navigation"
 	"github.com/danicat/godoctor/internal/tools/go/project"
-	"github.com/danicat/godoctor/internal/tools/go/quality"
 	"github.com/danicat/godoctor/internal/tools/go/testquery"
 )
 
@@ -54,6 +55,18 @@ func New(cfg *config.Config, version string) *Server {
 		},
 	})
 
+	roots.Global.OnChange(func(allRoots []string) {
+		go func() {
+			client, err := lsp.GlobalManager.Client(context.Background())
+			if err != nil {
+				log.Fatalf("LSP: fatal: failed to start/initialize language server: %v", err)
+			}
+			if syncErr := client.SyncRoots(context.Background(), allRoots); syncErr != nil {
+				log.Fatalf("LSP: fatal: failed to synchronize workspace roots: %v", syncErr)
+			}
+		}()
+	})
+
 	return &Server{
 		mcpServer:       s,
 		cfg:             cfg,
@@ -75,7 +88,7 @@ func (s *Server) ServeHTTP(ctx context.Context, addr string) error {
 		return err
 	}
 
-	mcpHandler := mcp.NewStreamableHTTPHandler(func(request *http.Request) *mcp.Server {
+	mcpHandler := mcp.NewStreamableHTTPHandler(func(_ *http.Request) *mcp.Server {
 		return s.mcpServer
 	}, nil)
 
@@ -102,13 +115,14 @@ func (s *Server) ServeHTTP(ctx context.Context, addr string) error {
 
 	log.Printf("MCP HTTP Server starting on %s", addr)
 	srv := &http.Server{
-		Addr:    addr,
-		Handler: handler,
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	go func() {
 		<-ctx.Done()
-		if err := srv.Shutdown(context.Background()); err != nil {
+		if err := srv.Shutdown(context.WithoutCancel(ctx)); err != nil {
 			log.Printf("MCP HTTP Server shutdown error: %v", err)
 		}
 	}()
@@ -117,7 +131,9 @@ func (s *Server) ServeHTTP(ctx context.Context, addr string) error {
 	go func() {
 		<-ctx.Done()
 		// Terminate the background gopls process gracefully
-		_ = lsp.GlobalManager.Close(context.Background())
+		if err := lsp.GlobalManager.Close(context.WithoutCancel(ctx)); err != nil {
+			log.Printf("LSP: error terminating background language server on exit: %v", err)
+		}
 	}()
 
 	return srv.ListenAndServe()
@@ -136,7 +152,7 @@ func (s *Server) RegisterHandlers() error {
 		{name: "smart_edit", register: edit.Register},
 		{name: "list_files", register: list.Register},
 
-		{name: "smart_build", register: quality.Register},
+		{name: "smart_build", register: build.Register},
 
 		{name: "project_init", register: project.Register},
 		{name: "add_dependency", register: get.Register},

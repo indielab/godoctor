@@ -136,19 +136,38 @@ func evaluateRunCommand(input map[string]interface{}) HookResponse {
 
 	cmdStr = strings.TrimSpace(cmdStr)
 
-	// 1. Build/Test Commands — always blocked: these are Go-specific by definition.
+	if resp := checkBuildTestCommands(cmdStr); resp.Decision == decisionDeny {
+		return resp
+	}
+	if resp := checkDependencyCommands(cmdStr); resp.Decision == decisionDeny {
+		return resp
+	}
+	if resp := checkFileWriters(cmdStr); resp.Decision == decisionDeny {
+		return resp
+	}
+	if resp := checkFileReaders(cmdStr); resp.Decision == decisionDeny {
+		return resp
+	}
+	return allow()
+}
+
+func checkBuildTestCommands(cmdStr string) HookResponse {
 	buildPatterns := []string{"go build", "go test", "go vet", "golangci-lint"}
 	for _, p := range buildPatterns {
 		if strings.Contains(cmdStr, p) {
 			return deny(
-				"GoDoctor Mandate: Manual toolchains are blocked. GoDoctor is a specialized and optimized tool suite created to improve agentic coding in Go. You MUST use GoDoctor's "+
-					"`smart_build` tool for Go build, test, tidying, formatting, and linting workflows.",
+				"GoDoctor Mandate: Manual toolchains are blocked. GoDoctor is a specialized "+
+					"and optimized tool suite created to improve agentic coding in Go. You MUST "+
+					"use GoDoctor's `smart_build` tool for Go build, test, tidying, formatting, "+
+					"and linting workflows.",
 				"🛑 Blocked manual build/test",
 			)
 		}
 	}
+	return allow()
+}
 
-	// 2. Dependency Commands — always blocked: go get is Go-specific.
+func checkDependencyCommands(cmdStr string) HookResponse {
 	if strings.HasPrefix(cmdStr, "go get") || strings.Contains(cmdStr, " go get ") {
 		return deny(
 			"Optimization Hook: Use `add_dependency` to install packages. It fetches the "+
@@ -156,31 +175,35 @@ func evaluateRunCommand(input map[string]interface{}) HookResponse {
 			"🛑 Blocked go get",
 		)
 	}
+	return allow()
+}
 
-	// 3. File Writers — only block when the command targets a .go file.
-	if strings.Contains(cmdStr, ".go") {
-		writePatterns := []string{"sed -i", "tee "}
-		for _, p := range writePatterns {
-			if strings.Contains(cmdStr, p) {
-				return deny(
-					"Optimization Hook: Shell file modifications are blocked for Go files. "+
-						"Use `smart_edit` to modify Go files safely.",
-					"🛑 Blocked raw file edit",
-				)
-			}
-		}
-		// echo redirecting into a .go file
-		if strings.Contains(cmdStr, "echo ") && strings.Contains(cmdStr, ">") &&
-			!strings.Contains(cmdStr, "> /dev/null") && !strings.Contains(cmdStr, ">/dev/null") {
+func checkFileWriters(cmdStr string) HookResponse {
+	if !strings.Contains(cmdStr, ".go") {
+		return allow()
+	}
+	writePatterns := []string{"sed -i", "tee "}
+	for _, p := range writePatterns {
+		if strings.Contains(cmdStr, p) {
 			return deny(
 				"Optimization Hook: Shell file modifications are blocked for Go files. "+
 					"Use `smart_edit` to modify Go files safely.",
-				"🛑 Blocked raw file write",
+				"🛑 Blocked raw file edit",
 			)
 		}
 	}
+	if strings.Contains(cmdStr, "echo ") && strings.Contains(cmdStr, ">") &&
+		!strings.Contains(cmdStr, "> /dev/null") && !strings.Contains(cmdStr, ">/dev/null") {
+		return deny(
+			"Optimization Hook: Shell file modifications are blocked for Go files. "+
+				"Use `smart_edit` to modify Go files safely.",
+			"🛑 Blocked raw file write",
+		)
+	}
+	return allow()
+}
 
-	// 4. File Readers — only block when the command targets a .go file.
+func checkFileReaders(cmdStr string) HookResponse {
 	if strings.HasPrefix(cmdStr, "cat ") && strings.Contains(cmdStr, ".go") ||
 		strings.Contains(cmdStr, " cat ") && strings.Contains(cmdStr, ".go") {
 		return deny(
@@ -207,13 +230,4 @@ func deny(reason, systemMessage string) HookResponse {
 func writeResponse(resp HookResponse) {
 	out, _ := json.Marshal(resp)
 	fmt.Println(string(out))
-}
-
-// handleShellCommand is kept for backward compatibility with direct callers.
-func handleShellCommand(input map[string]interface{}) {
-	_ = evaluateRunCommand(input)
-	// We call writeResponse inside Intercept/evaluate, but handleShellCommand is kept for compatibility.
-	resp := evaluateRunCommand(input)
-	writeResponse(resp)
-	os.Exit(0)
 }

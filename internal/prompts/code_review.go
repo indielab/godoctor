@@ -53,11 +53,16 @@ func CodeReview(namespace string) *mcp.Prompt {
 		name = namespace + ":" + name
 	}
 	return &mcp.Prompt{
-		Name:        name,
-		Title:       "Go Code Review",
-		Description: "Senior-level Go code review checklist covering concurrency, interfaces, error handling, and GoDoctor tool integration.",
+		Name:  name,
+		Title: "Go Code Review",
+		Description: "Senior-level Go code review checklist covering concurrency, interfaces,\n" +
+			"error handling, and GoDoctor tool integration.",
 		Arguments: []*mcp.PromptArgument{
-			{Name: "focus", Description: "Optional area to focus the review on (e.g. concurrency, error-handling)", Required: false},
+			{
+				Name:        "focus",
+				Description: "Optional area to focus the review on (e.g. concurrency, error-handling)",
+				Required:    false,
+			},
 		},
 	}
 }

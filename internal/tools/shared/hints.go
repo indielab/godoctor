@@ -1,3 +1,4 @@
+// Package shared provides shared utilities for GoDoctor tools.
 package shared
 
 import (
@@ -34,13 +35,15 @@ func generateHint(msg string) string {
 	// Check for "undefined: pkg.Symbol"
 	if matches := undefinedPkgRe.FindStringSubmatch(msg); len(matches) > 1 {
 		pkgName := matches[1]
-		return fmt.Sprintf("\n\n**HINT:** usage of '%s' failed. Try calling `go_docs` on that package to see the correct API.", pkgName)
+		return fmt.Sprintf("\n\n**HINT:** usage of '%s' failed. "+
+			"Try calling `go_docs` on that package to see the correct API.", pkgName)
 	}
 
 	// Check for "could not import ..."
 	if matches := importErrorRe.FindStringSubmatch(msg); len(matches) > 1 {
 		pkgPath := matches[1]
-		return fmt.Sprintf("\n\n**HINT:** import '%s' failed. Try calling `go_docs` on \"%s\" to verify the package path and exports.", pkgPath, pkgPath)
+		return fmt.Sprintf("\n\n**HINT:** import '%s' failed. "+
+			"Try calling `go_docs` on \"%s\" to verify the package path and exports.", pkgPath, pkgPath)
 	}
 
 	return ""

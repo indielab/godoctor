@@ -1,5 +1,5 @@
-// Package quality implements the smart_build tool.
-package quality
+// Package build implements the smart_build tool.
+package build
 
 import (
 	"context"
@@ -26,6 +26,7 @@ func Register(server *mcp.Server) {
 
 // Params defines the input parameters.
 type Params struct {
+	//nolint:lll
 	Dir      string `json:"dir,omitempty" jsonschema:"The absolute directory path to build in. Always pass absolute paths in multi-root workspaces."`
 	Packages string `json:"packages,omitempty" jsonschema:"Packages to build (default: ./...)"`
 }
@@ -37,6 +38,7 @@ type Runner interface {
 	LookPath(file string) (string, error)
 }
 
+// stdRunner implements standard command running.
 type stdRunner struct{}
 
 func (r *stdRunner) Run(ctx context.Context, dir, name string, args ...string) error {
@@ -56,8 +58,10 @@ func (r *stdRunner) LookPath(file string) (string, error) {
 	return exec.LookPath(file)
 }
 
+// CommandRunner is used to execute CLI commands.
 var CommandRunner Runner = &stdRunner{}
 
+// Handler executes the smart_build tool.
 func Handler(ctx context.Context, req *mcp.CallToolRequest, args Params) (*mcp.CallToolResult, any, error) {
 	var session *mcp.ServerSession
 	if req != nil {
@@ -111,21 +115,20 @@ func runAutoFix(ctx context.Context, dir string, sb *strings.Builder) {
 		// These analyzers return exit code 3 if they found an issue and fixed it.
 		// Exit code 1 means a genuine failure (e.g. compile error).
 		if err != nil {
-			// We don't want to fail the whole build for a lint fix error, just warn the user.
+			// We don't want to fail the whole build for a linter fix error, just warn the user.
 			if !strings.Contains(err.Error(), "exit status 3") {
 				fmt.Fprintf(sb, "  - ⚠️ Modernize `%s` Warning: %v\n    %s\n", cmd, err, strings.TrimSpace(out))
 			}
 		}
 	}
 
-	runAnalyzer("golang.org/x/tools/go/analysis/passes/defers/cmd/defers@latest")
-	runAnalyzer("golang.org/x/tools/go/analysis/passes/errorsas/cmd/errorsas@latest")
-	runAnalyzer("golang.org/x/tools/go/analysis/passes/sortslice/cmd/sortslice@latest")
-	runAnalyzer("golang.org/x/tools/go/analysis/passes/timeformat/cmd/timeformat@latest")
+	runAnalyzer("golang.org/x/tools/go/analysis/passes/defers/cmd/defers@v0.21.0")
+	runAnalyzer("golang.org/x/tools/go/analysis/passes/errorsas/cmd/errorsas@v0.21.0")
+	runAnalyzer("golang.org/x/tools/go/analysis/passes/sortslice/cmd/sortslice@v0.21.0")
+	runAnalyzer("golang.org/x/tools/go/analysis/passes/timeformat/cmd/timeformat@v0.21.0")
 
-	if err := CommandRunner.Run(ctx, dir, "gofmt", "-w", "."); err != nil {
-		// gofmt might fail if syntax is very broken, which build will catch
-	}
+	// gofmt might fail if syntax is very broken, which build will catch
+	_ = CommandRunner.Run(ctx, dir, "gofmt", "-w", ".")
 }
 
 func runBuild(ctx context.Context, dir, pkgs string, sb *strings.Builder) error {
@@ -165,42 +168,76 @@ func runTestsPhase(ctx context.Context, dir, pkgs string, sb *strings.Builder) e
 	sb.WriteString("#### Coverage\n")
 
 	// 1. Get Total Coverage from go tool cover -func
-	funcOut, funcErr := CommandRunner.RunWithOutput(ctx, dir, "go", "tool", "cover", "-func="+covFile)
-	if funcErr == nil {
-		lines := strings.Split(strings.TrimSpace(funcOut), "\n")
-		if len(lines) > 0 {
-			lastLine := lines[len(lines)-1]
-			if strings.HasPrefix(lastLine, "total:") {
-				// Format: "total: (statements) 80.0%"
-				parts := strings.Fields(lastLine)
-				if len(parts) >= 3 {
-					fmt.Fprintf(sb, "- **Total Project Coverage**: %s\n", parts[len(parts)-1])
-				}
-			}
-		}
+	if totalCov := parseTotalCoverage(ctx, dir, covFile); totalCov != "" {
+		fmt.Fprintf(sb, "- **Total Project Coverage**: %s\n", totalCov)
 	}
 
 	// 2. Parse per-package coverage from test output
-	lines := strings.Split(testOut, "\n")
-	hasCoverage := false
-	for _, line := range lines {
-		if strings.Contains(line, "\tcoverage: ") {
-			parts := strings.Fields(line)
-			if len(parts) >= 5 {
-				pkg := parts[1]
-				covStr := parts[4] // "50.0%"
-				if covStr != "0.0%" && covStr != "[no" {
-					if !hasCoverage {
-						sb.WriteString("- **Packages**:\n")
-						hasCoverage = true
-					}
-					fmt.Fprintf(sb, "  - `%s`: %s\n", pkg, covStr)
-				}
-			}
-		}
-	}
+	parsePackagesCoverage(testOut, sb)
 	sb.WriteString("\n")
 	return nil
+}
+
+func parseTotalCoverage(ctx context.Context, dir, covFile string) string {
+	funcOut, funcErr := CommandRunner.RunWithOutput(ctx, dir, "go", "tool", "cover", "-func="+covFile)
+	if funcErr != nil {
+		return ""
+	}
+	lines := strings.Split(strings.TrimSpace(funcOut), "\n")
+	if len(lines) == 0 {
+		return ""
+	}
+	lastLine := lines[len(lines)-1]
+	if !strings.HasPrefix(lastLine, "total:") {
+		return ""
+	}
+	parts := strings.Fields(lastLine)
+	if len(parts) < 3 {
+		return ""
+	}
+	return parts[len(parts)-1]
+}
+
+func parsePackagesCoverage(testOut string, sb *strings.Builder) {
+	lines := strings.Split(testOut, "\n")
+	hasCoverage := false
+	seenPkgs := make(map[string]bool)
+	for _, line := range lines {
+		if !strings.Contains(line, "coverage:") {
+			continue
+		}
+		parts := strings.Fields(line)
+		if len(parts) < 4 || parts[0] != "ok" {
+			continue
+		}
+		pkg := parts[1]
+		if pkg == "coverage:" || strings.HasPrefix(pkg, "coverage") || seenPkgs[pkg] {
+			continue
+		}
+		covIdx := findCoverageIndex(parts)
+		if covIdx == -1 || covIdx+1 >= len(parts) {
+			continue
+		}
+		covStr := parts[covIdx+1]
+		if covStr == "0.0%" || covStr == "[no" {
+			continue
+		}
+		if !hasCoverage {
+			sb.WriteString("- **Packages**:\n")
+			hasCoverage = true
+		}
+		seenPkgs[pkg] = true
+		fmt.Fprintf(sb, "  - `%s`: %s\n", pkg, covStr)
+	}
+}
+
+func findCoverageIndex(parts []string) int {
+	for i, part := range parts {
+		if part == "coverage:" {
+			return i
+		}
+	}
+	return -1
 }
 
 func runLinterPhase(ctx context.Context, dir, pkgs string, sb *strings.Builder) error {

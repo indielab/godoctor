@@ -14,13 +14,45 @@ import (
 
 // State manages the registered project roots on a per-session basis.
 type State struct {
-	mu    sync.RWMutex
-	roots map[*mcp.ServerSession][]string
+	mu       sync.RWMutex
+	roots    map[*mcp.ServerSession][]string
+	onChange func([]string)
 }
 
 // Global is the singleton instance for the entire application.
 var Global = &State{
 	roots: make(map[*mcp.ServerSession][]string),
+}
+
+// OnChange registers a callback that fires whenever roots change.
+func (s *State) OnChange(cb func([]string)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.onChange = cb
+}
+
+// GetAllRoots returns a deep copy of all registered roots across all sessions.
+func (s *State) GetAllRoots() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.getAllRootsLocked()
+}
+
+func (s *State) getAllRootsLocked() []string {
+	if s.roots == nil {
+		return nil
+	}
+	var all []string
+	seen := make(map[string]bool)
+	for _, rts := range s.roots {
+		for _, r := range rts {
+			if !seen[r] {
+				seen[r] = true
+				all = append(all, r)
+			}
+		}
+	}
+	return all
 }
 
 // Add adds a new project root for the given session after normalizing it to an absolute path.
@@ -31,7 +63,6 @@ func (s *State) Add(session *mcp.ServerSession, path string) {
 	}
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	if s.roots == nil {
 		s.roots = make(map[*mcp.ServerSession][]string)
@@ -40,10 +71,22 @@ func (s *State) Add(session *mcp.ServerSession, path string) {
 	rts := s.roots[session]
 	for _, r := range rts {
 		if r == abs {
+			s.mu.Unlock()
 			return
 		}
 	}
 	s.roots[session] = append(rts, abs)
+
+	cb := s.onChange
+	var snapshot []string
+	if cb != nil {
+		snapshot = s.getAllRootsLocked()
+	}
+	s.mu.Unlock()
+
+	if cb != nil {
+		cb(snapshot)
+	}
 }
 
 // Get returns a copy of the registered roots for the given session.
@@ -68,10 +111,69 @@ func (s *State) Get(session *mcp.ServerSession) []string {
 // Delete removes all registered roots for the given session.
 func (s *State) Delete(session *mcp.ServerSession) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.roots != nil {
 		delete(s.roots, session)
 	}
+
+	cb := s.onChange
+	var snapshot []string
+	if cb != nil {
+		snapshot = s.getAllRootsLocked()
+	}
+	s.mu.Unlock()
+
+	if cb != nil {
+		cb(snapshot)
+	}
+}
+
+// parseRootURI parses a single MCP root URI and normalizes it to a local absolute path.
+func parseRootURI(uri string) string {
+	u, err := url.Parse(uri)
+	if err != nil || u.Scheme != "file" {
+		return ""
+	}
+
+	path := u.Path
+	if u.Host != "" && u.Host != "localhost" {
+		if filepath.Separator == '\\' {
+			// Windows UNC path: \\host\path
+			path = `\\` + u.Host + filepath.FromSlash(u.Path)
+		} else {
+			// Treat host as part of the path if u.Path is empty/relative
+			if path == "" {
+				path = u.Host
+			} else {
+				path = u.Host + path
+			}
+		}
+	}
+
+	// Normalize Windows-style absolute paths from URIs (e.g. /C:/path -> C:/path)
+	if filepath.Separator == '\\' && len(path) > 2 && path[0] == '/' && path[2] == ':' {
+		path = path[1:]
+	}
+
+	abs, err := filepath.Abs(path)
+	if err == nil {
+		return abs
+	}
+	return ""
+}
+
+// parseRoots takes MCP ListRootsResult and extracts valid absolute paths.
+func parseRoots(res *mcp.ListRootsResult) []string {
+	var rts []string
+	for _, r := range res.Roots {
+		if abs := parseRootURI(r.URI); abs != "" {
+			rts = append(rts, abs)
+		}
+	}
+	if len(rts) == 0 {
+		abs, _ := filepath.Abs(".")
+		rts = append(rts, abs)
+	}
+	return rts
 }
 
 // Sync synchronizes roots from the MCP client for the given session.
@@ -94,75 +196,82 @@ func (s *State) Sync(ctx context.Context, session *mcp.ServerSession) {
 		return
 	}
 
-	var rts []string
-	for _, r := range res.Roots {
-		u, err := url.Parse(r.URI)
-		if err != nil || u.Scheme != "file" {
-			continue
-		}
-
-		path := u.Path
-		if u.Host != "" && u.Host != "localhost" {
-			if filepath.Separator == '\\' {
-				// Windows UNC path: \\host\path
-				path = `\\` + u.Host + filepath.FromSlash(u.Path)
-			} else {
-				// Treat host as part of the path if u.Path is empty/relative
-				if path == "" {
-					path = u.Host
-				} else {
-					path = u.Host + path
-				}
-			}
-		}
-
-		// Normalize Windows-style absolute paths from URIs (e.g. /C:/path -> C:/path)
-		if filepath.Separator == '\\' && len(path) > 2 && path[0] == '/' && path[2] == ':' {
-			path = path[1:]
-		}
-
-		abs, err := filepath.Abs(path)
-		if err == nil {
-			rts = append(rts, abs)
-		}
-	}
-
-	if len(rts) == 0 {
-		abs, _ := filepath.Abs(".")
-		rts = append(rts, abs)
-	}
+	rts := parseRoots(res)
 
 	s.mu.Lock()
 	if s.roots == nil {
 		s.roots = make(map[*mcp.ServerSession][]string)
 	}
 	s.roots[session] = rts
+
+	cb := s.onChange
+	var snapshot []string
+	if cb != nil {
+		snapshot = s.getAllRootsLocked()
+	}
 	s.mu.Unlock()
+
+	if cb != nil {
+		cb(snapshot)
+	}
+}
+
+// Validate checks if the given path is within any of the registered roots for the session.
+// It returns the absolute path if valid, or an error if not.
+// validateEmptyPath handles the case where path is empty or ".".
+func (s *State) validateEmptyPath(session *mcp.ServerSession) (string, error) {
+	roots := s.Get(session)
+	cwd, err := filepath.Abs(".")
+	if err == nil && cwd != "/" && cwd != filepath.VolumeName(cwd)+string(filepath.Separator) {
+		for _, root := range roots {
+			if cwd == root || strings.HasPrefix(cwd, root+string(filepath.Separator)) {
+				return cwd, nil
+			}
+		}
+	}
+	if len(roots) > 0 {
+		return roots[0], nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("invalid path: %w", err)
+	}
+	if cwd == "/" || cwd == filepath.VolumeName(cwd)+string(filepath.Separator) {
+		return "", fmt.Errorf("access denied: current working directory is the system root")
+	}
+	return cwd, nil
+}
+
+// isTempDir checks if absPath is inside the system temporary directory.
+func isTempDir(absPath string) bool {
+	rawTemp := os.TempDir()
+	if strings.HasPrefix(absPath, rawTemp) {
+		return true
+	}
+	if tempDir, err := filepath.EvalSymlinks(rawTemp); err == nil {
+		if strings.HasPrefix(absPath, tempDir) || strings.HasPrefix(absPath, "/tmp") {
+			return true
+		}
+	}
+	return false
+}
+
+// validateCWD checks if the given path is allowed when no roots are registered.
+func validateCWD(absPath string, originalPath string) (string, error) {
+	cwd, _ := filepath.Abs(".")
+	if cwd == "/" || cwd == filepath.VolumeName(cwd)+string(filepath.Separator) {
+		return "", fmt.Errorf("access denied: current working directory is the system root")
+	}
+	if absPath == cwd || strings.HasPrefix(absPath, cwd+string(filepath.Separator)) {
+		return absPath, nil
+	}
+	return "", fmt.Errorf("access denied: path %s is outside the current working directory", originalPath)
 }
 
 // Validate checks if the given path is within any of the registered roots for the session.
 // It returns the absolute path if valid, or an error if not.
 func (s *State) Validate(session *mcp.ServerSession, path string) (string, error) {
 	if path == "" || path == "." {
-		roots := s.Get(session)
-		cwd, err := filepath.Abs(".")
-		if err == nil && cwd != "/" && cwd != filepath.VolumeName(cwd)+string(filepath.Separator) {
-			for _, root := range roots {
-				if cwd == root || strings.HasPrefix(cwd, root+string(filepath.Separator)) {
-					return cwd, nil
-				}
-			}
-		}
-		if len(roots) > 0 {
-			return roots[0], nil
-		}
-		if err != nil {
-			return "", fmt.Errorf("invalid path: %w", err)
-		}
-		if cwd == "/" || cwd == filepath.VolumeName(cwd)+string(filepath.Separator) {
-			return "", fmt.Errorf("access denied: current working directory is the system root")
-		}
-		return cwd, nil
+		return s.validateEmptyPath(session)
 	}
 
 	absPath, err := filepath.Abs(path)
@@ -170,30 +279,13 @@ func (s *State) Validate(session *mcp.ServerSession, path string) (string, error
 		return "", fmt.Errorf("invalid path: %w", err)
 	}
 
-	roots := s.Get(session)
-
-	// Allow access to system temporary directory
-	rawTemp := os.TempDir()
-	if strings.HasPrefix(absPath, rawTemp) {
+	if isTempDir(absPath) {
 		return absPath, nil
 	}
-	if tempDir, err := filepath.EvalSymlinks(rawTemp); err == nil {
-		// handle /var/folders/ vs /tmp mismatch on macOS
-		if strings.HasPrefix(absPath, tempDir) || strings.HasPrefix(absPath, "/tmp") {
-			return absPath, nil
-		}
-	}
 
-	// If no roots are registered, default to CWD (unless it is the system root)
+	roots := s.Get(session)
 	if len(roots) == 0 {
-		cwd, _ := filepath.Abs(".")
-		if cwd == "/" || cwd == filepath.VolumeName(cwd)+string(filepath.Separator) {
-			return "", fmt.Errorf("access denied: current working directory is the system root")
-		}
-		if absPath == cwd || strings.HasPrefix(absPath, cwd+string(filepath.Separator)) {
-			return absPath, nil
-		}
-		return "", fmt.Errorf("access denied: path %s is outside the current working directory", path)
+		return validateCWD(absPath, path)
 	}
 
 	for _, root := range roots {

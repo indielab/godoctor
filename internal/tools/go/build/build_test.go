@@ -1,4 +1,4 @@
-package quality
+package build
 
 import (
 	"context"
@@ -14,7 +14,7 @@ type mockRunner struct {
 	errors  map[string]error
 }
 
-func (r *mockRunner) Run(ctx context.Context, dir, name string, args ...string) error {
+func (r *mockRunner) Run(_ context.Context, _, name string, args ...string) error {
 	cmd := name + " " + strings.Join(args, " ")
 	for k, v := range r.errors {
 		if strings.Contains(cmd, k) {
@@ -24,7 +24,7 @@ func (r *mockRunner) Run(ctx context.Context, dir, name string, args ...string) 
 	return nil
 }
 
-func (r *mockRunner) RunWithOutput(ctx context.Context, dir, name string, args ...string) (string, error) {
+func (r *mockRunner) RunWithOutput(_ context.Context, _, name string, args ...string) (string, error) {
 	cmd := name + " " + strings.Join(args, " ")
 	output := ""
 	for k, v := range r.outputs {

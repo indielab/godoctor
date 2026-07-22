@@ -26,11 +26,13 @@ func Register(server *mcp.Server) {
 
 // Params defines the input parameters.
 type Params struct {
+	//nolint:lll
 	Path  string `json:"path" jsonschema:"The absolute root path to list. You MUST pass the absolute path in multi-root workspaces."`
 	Depth int    `json:"depth,omitempty" jsonschema:"Maximum recursion depth (0 for default of 5, 1 for non-recursive)"`
 }
 
-func Handler(ctx context.Context, req *mcp.CallToolRequest, args Params) (*mcp.CallToolResult, any, error) {
+// Handler implements the file list logic.
+func Handler(_ context.Context, req *mcp.CallToolRequest, args Params) (*mcp.CallToolResult, any, error) {
 	var session *mcp.ServerSession
 	if req != nil {
 		session = req.Session

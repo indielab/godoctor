@@ -52,116 +52,81 @@ func readCodeHandler(ctx context.Context, req *mcp.CallToolRequest, args Params)
 		return errorResult("at least one filename must be specified"), nil, nil
 	}
 
-	// 0. Outline Mode
 	if args.Outline && args.StartLine == 0 {
-		var sb strings.Builder
-		for _, filename := range filenames {
-			absPath, err := roots.Global.Validate(session, filename)
-			if err != nil {
-				return errorResult(err.Error()), nil, nil
-			}
-			out, imports, errs, err := outline.GetOutline(absPath)
-			if err != nil {
-				return errorResult(fmt.Sprintf("failed to generate outline for %s: %v", filename, err)), nil, nil
-			}
-			fmt.Fprintf(&sb, "# File: %s (Outline)\n\n", absPath)
-			if len(errs) > 0 {
-				sb.WriteString("## Analysis (Problems)\n")
-				for _, e := range errs {
-					fmt.Fprintf(&sb, "- ⚠️ %v\n", e)
-				}
-				sb.WriteString("\n")
-			}
-			sb.WriteString("```go\n")
-			sb.WriteString(out)
-			sb.WriteString("\n```\n\n")
-
-			if len(imports) > 0 {
-				var thirdParty []string
-				for _, imp := range imports {
-					clean := strings.Trim(imp, "\"")
-					if parts := strings.Split(clean, "/"); len(parts) > 0 && strings.Contains(parts[0], ".") {
-						thirdParty = append(thirdParty, imp)
-					}
-				}
-				if len(thirdParty) > 0 {
-					sb.WriteString("## Third-Party Imports\n")
-					for _, imp := range thirdParty {
-						fmt.Fprintf(&sb, "- %s\n", imp)
-					}
-					sb.WriteString("\n")
-				}
-			}
-		}
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: sb.String()},
-			},
-		}, nil, nil
+		return handleOutlineMode(ctx, session, filenames)
 	}
 
-	// 1. Multi-File Read Content
-	var sb strings.Builder
-	var allTypesEnrichment strings.Builder
+	return handleReadMode(ctx, session, args, filenames)
+}
 
+func handleOutlineMode(
+	ctx context.Context,
+	session *mcp.ServerSession,
+	filenames []string,
+) (*mcp.CallToolResult, any, error) {
+	var sb strings.Builder
 	for _, filename := range filenames {
 		absPath, err := roots.Global.Validate(session, filename)
 		if err != nil {
 			return errorResult(err.Error()), nil, nil
 		}
-
-		//nolint:gosec // G304: File path provided by user is validated against roots.
-		content, err := os.ReadFile(absPath)
+		out, imports, errs, err := outline.GetOutline(ctx, absPath)
 		if err != nil {
-			return errorResult(fmt.Sprintf("failed to read file %s: %v", filename, err)), nil, nil
+			return errorResult(fmt.Sprintf("failed to generate outline for %s: %v", filename, err)), nil, nil
 		}
-
-		isGo := strings.HasSuffix(absPath, ".go")
-		original := string(content)
-
-		startLine := args.StartLine
-		if startLine <= 0 {
-			startLine = 1
-		}
-		endLine := args.EndLine
-
-		startOffset, endOffset, err := shared.GetLineOffsets(original, startLine, endLine)
-		if err != nil {
-			return errorResult(fmt.Sprintf("line range error for %s: %v", filename, err)), nil, nil
-		}
-
-		viewContent := original[startOffset:endOffset]
-		lines := strings.Split(viewContent, "\n")
-		if len(lines) > 0 && lines[len(lines)-1] == "" && !strings.HasSuffix(viewContent, "\n") {
-			lines = lines[:len(lines)-1]
-		}
-
-		var contentWithLines strings.Builder
-		for i, line := range lines {
-			fmt.Fprintf(&contentWithLines, "%4d | %s\n", startLine+i, line)
-		}
-
-		isPartial := args.StartLine > 1 || args.EndLine > 0
-		rangeInfo := ""
-		if isPartial {
-			rangeInfo = fmt.Sprintf(" (Lines %d-%d)", startLine, startLine+len(lines)-1)
-		}
-		fmt.Fprintf(&sb, "# File: %s%s\n\n", absPath, rangeInfo)
-
-		sb.WriteString("```")
-		if isGo {
-			sb.WriteString("go")
-		}
-		sb.WriteString("\n")
-		sb.WriteString(contentWithLines.String())
-		sb.WriteString("```\n\n")
-
-		if isGo {
-			// Type enrichment
-			enrichment := enrichTypes(ctx, absPath, content)
-			if enrichment != "" {
-				allTypesEnrichment.WriteString(enrichment)
+		fmt.Fprintf(&sb, "# File: %s (Outline)\n\n", absPath)
+		if len(errs) > 0 {
+			sb.WriteString("## Analysis (Problems)\n")
+			for _, e := range errs {
+				fmt.Fprintf(&sb, "- ⚠️ %v\n", e)
 			}
+			sb.WriteString("\n")
+		}
+		sb.WriteString("```go\n")
+		sb.WriteString(out)
+		sb.WriteString("\n```\n\n")
+
+		if len(imports) > 0 {
+			var thirdParty []string
+			for _, imp := range imports {
+				clean := strings.Trim(imp, "\"")
+				if parts := strings.Split(clean, "/"); len(parts) > 0 && strings.Contains(parts[0], ".") {
+					thirdParty = append(thirdParty, imp)
+				}
+			}
+			if len(thirdParty) > 0 {
+				sb.WriteString("## Third-Party Imports\n")
+				for _, imp := range thirdParty {
+					fmt.Fprintf(&sb, "- %s\n", imp)
+				}
+				sb.WriteString("\n")
+			}
+		}
+	}
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: sb.String()},
+		},
+	}, nil, nil
+}
+
+func handleReadMode(
+	ctx context.Context,
+	session *mcp.ServerSession,
+	args Params,
+	filenames []string,
+) (*mcp.CallToolResult, any, error) {
+	var sb strings.Builder
+	var allTypesEnrichment strings.Builder
+
+	for _, filename := range filenames {
+		fContent, enrich, errRes := readSingleFile(ctx, session, args, filename)
+		if errRes != nil {
+			return errRes, nil, nil
+		}
+		sb.WriteString(fContent)
+		if enrich != "" {
+			allTypesEnrichment.WriteString(enrich)
 		}
 	}
 
@@ -175,6 +140,82 @@ func readCodeHandler(ctx context.Context, req *mcp.CallToolRequest, args Params)
 			&mcp.TextContent{Text: sb.String()},
 		},
 	}, nil, nil
+}
+
+func readSingleFile(
+	ctx context.Context,
+	session *mcp.ServerSession,
+	args Params,
+	filename string,
+) (string, string, *mcp.CallToolResult) {
+	absPath, err := roots.Global.Validate(session, filename)
+	if err != nil {
+		return "", "", errorResult(err.Error())
+	}
+
+	//nolint:gosec // G304: File path provided by user is validated against roots.
+	content, err := os.ReadFile(absPath)
+	if err != nil {
+		return "", "", errorResult(fmt.Sprintf("failed to read file %s: %v", filename, err))
+	}
+
+	isGo := strings.HasSuffix(absPath, ".go")
+	original := string(content)
+
+	startLine := args.StartLine
+	if startLine <= 0 {
+		startLine = 1
+	}
+	endLine := args.EndLine
+
+	startOffset, endOffset, err := shared.GetLineOffsets(original, startLine, endLine)
+	if err != nil {
+		return "", "", errorResult(fmt.Sprintf("line range error for %s: %v", filename, err))
+	}
+
+	viewContent := original[startOffset:endOffset]
+	contentWithLines, linesCount := renderContentWithLines(viewContent, startLine)
+
+	isPartial := args.StartLine > 1 || args.EndLine > 0
+	rangeInfo := ""
+	if isPartial {
+		rangeInfo = fmt.Sprintf(" (Lines %d-%d)", startLine, startLine+linesCount-1)
+	}
+
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "# File: %s%s\n\n", absPath, rangeInfo)
+
+	sb.WriteString("```")
+	if isGo {
+		sb.WriteString("go")
+	}
+	sb.WriteString("\n")
+	sb.WriteString(contentWithLines)
+	sb.WriteString("```\n\n")
+
+	var enrichment string
+	if isGo {
+		var enrichErr error
+		enrichment, enrichErr = enrichTypes(ctx, absPath, content)
+		if enrichErr != nil {
+			return "", "", errorResult(fmt.Sprintf("failed to enrich types via gopls: %v", enrichErr))
+		}
+	}
+
+	return sb.String(), enrichment, nil
+}
+
+func renderContentWithLines(viewContent string, startLine int) (string, int) {
+	lines := strings.Split(viewContent, "\n")
+	if len(lines) > 0 && lines[len(lines)-1] == "" && !strings.HasSuffix(viewContent, "\n") {
+		lines = lines[:len(lines)-1]
+	}
+
+	var sb strings.Builder
+	for i, line := range lines {
+		fmt.Fprintf(&sb, "%4d | %s\n", startLine+i, line)
+	}
+	return sb.String(), len(lines)
 }
 
 func getInterestingTypePos(n ast.Expr) token.Pos {
@@ -207,13 +248,25 @@ func getInterestingTypePos(n ast.Expr) token.Pos {
 	return token.NoPos
 }
 
-func enrichTypes(ctx context.Context, filename string, content []byte) string {
+func enrichTypes(ctx context.Context, filename string, content []byte) (string, error) {
 	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, filename, content, parser.ParseComments)
-	if err != nil {
-		return ""
+	f, parseErr := parser.ParseFile(fset, filename, content, parser.ParseComments)
+	if parseErr != nil {
+		// If the file is syntactically invalid (e.g. broken, incomplete, or a plain text mock file),
+		// we gracefully skip type enrichment instead of throwing a fatal LSP client error.
+		//nolint:nilerr // syntax/parse errors are gracefully skipped during type enrichment
+		return "", nil
 	}
 
+	posList := extractTypePositions(fset, f)
+	if len(posList) == 0 {
+		return "", nil
+	}
+
+	return resolveDefinitions(ctx, filename, posList)
+}
+
+func extractTypePositions(fset *token.FileSet, f *ast.File) []token.Position {
 	visitedPositions := make(map[string]bool)
 	var posList []token.Position
 
@@ -246,32 +299,26 @@ func enrichTypes(ctx context.Context, filename string, content []byte) string {
 		}
 		return true
 	})
+	return posList
+}
 
-	if len(posList) == 0 {
-		return ""
-	}
-
-	// Retrieve persistent language client connection from our manager
+func resolveDefinitions(ctx context.Context, filename string, posList []token.Position) (string, error) {
 	client, err := lsp.GlobalManager.Client(ctx)
 	if err != nil {
-		return ""
+		return "", err
 	}
 
 	var mu sync.Mutex
 	var typeDefinitions []string
 	var uniqueDefs = make(map[string]bool)
-
 	var wg sync.WaitGroup
 
 	for _, pos := range posList {
 		wg.Add(1)
 		go func(position token.Position) {
 			defer wg.Done()
-
-			// Instantly query the single persistent gopls daemon over JSON-RPC instead of spawning subprocesses
 			locs, err := client.GetDefinition(ctx, filename, position.Line, position.Column)
 			if err == nil && len(locs) > 0 {
-				// To preserve format, we can query definitions output via fallback query coordinates or print URI directly
 				loc := locs[0]
 				defStr := fmt.Sprintf(
 					"%s:%d:%d -> Definition coordinate resolved",
@@ -290,10 +337,13 @@ func enrichTypes(ctx context.Context, filename string, content []byte) string {
 	}
 	wg.Wait()
 
+	return formatDefinitions(typeDefinitions), nil
+}
+
+func formatDefinitions(typeDefinitions []string) string {
 	if len(typeDefinitions) == 0 {
 		return ""
 	}
-
 	var sb strings.Builder
 	sb.WriteString("<types>\n")
 	for _, def := range typeDefinitions {

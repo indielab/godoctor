@@ -80,8 +80,8 @@ my-app/
 - **Why Reject**: Global state makes unit testing impossible to run in parallel, introduces data races, and hides runtime dependencies. Pass dependencies explicitly via constructors.
 
 ### ❌ Panic for Control Flow / Error Swallowing
-- **Antipattern**: Using `panic()` in library or service code, or ignoring returned errors with `_`.
-- **Why Reject**: `panic` halts the process and degrades reliability. Always handle errors and wrap them with descriptive context using `fmt.Errorf("doing X: %w", err)`.
+- **Antipattern**: Using `panic()` in library or service code, or ignoring returned errors with `_`, or merely logging errors and letting the program continue as if nothing happened.
+- **Why Reject**: `panic` halts the process ungracefully, while swallowing or silently logging errors masks failures, leading to silent corruption and non-deterministic behavior. Always propagate errors up or fail-fast loudly.
 
 ### ❌ Context Swallowing
 - **Antipattern**: Ignoring `ctx context.Context` in network/database calls or calling `context.Background()` deep inside HTTP request handlers.
@@ -199,3 +199,18 @@ When initializing or refactoring Go projects using GoDoctor tools:
 3. **Implement Code**: Use `smart_edit` to create or update Go source files, adhering to the antipattern rules above.
 4. **Manage Dependencies**: Use `add_dependency` to query and add verified Go module dependencies.
 5. **Build & Validate**: Execute `smart_build` to run GoDoctor's build pipeline (`go mod tidy` -> modernization -> `gofmt` -> `go build` -> `go test` -> linter).
+
+---
+
+## 5. Robust Error Handling Mandate (Fail Fast, Fail Loudly)
+
+Standardizing error treatment is critical for codebase reliability. GoDoctor strictly enforces the following mandates:
+
+### Propagate, Don't Swallowing
+- **No Soft Logging**: Never log an error (`log.Printf`, `fmt.Println`) and let the program proceed as if everything is fine (silent failures). If an error is unrecoverable for the current component, it **must** either:
+  1. Be returned to the caller with context (`fmt.Errorf("context: %w", err)`).
+  2. Cause the process to fail fast and fail loudly (`log.Fatalf`, `os.Exit(1)`) if it occurs at startup, initialization, or in an unrecoverable daemon loop (e.g. broken mandatory connections like `gopls`).
+
+### Informative Failures
+- **Never Crash Silently**: When causing a fatal process exit, always provide detailed, clear diagnostics, root cause reasons, and actionable instructions to the stderr/logs so that the user can resolve the issue immediately.
+- **Fail Fast**: Stop execution immediately on dependency or configuration failures rather than trying to proceed with degraded or corrupt states.

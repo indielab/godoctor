@@ -1,8 +1,10 @@
-// Package edit implements the file editing tool with atomic multi-file transactions, formatting, compiler gates, and spelling aids.
+// Package edit implements the file editing tool with atomic multi-file transactions,
+// formatting, compiler gates, and spelling aids.
 package edit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -30,13 +32,16 @@ func Register(server *mcp.Server) {
 
 // FileEdit defines a single edit transaction within the smart_edit tool.
 type FileEdit struct {
-	Filename   string  `json:"filename" jsonschema:"The absolute path to the file to edit. You MUST use absolute paths in multi-root workspaces."`
-	OldContent string  `json:"old_content,omitempty" jsonschema:"Optional: The block of code to find (ignores whitespace)"`
-	NewContent string  `json:"new_content" jsonschema:"The new code to insert"`
-	StartLine  int     `json:"start_line,omitempty" jsonschema:"Optional: restrict search to this line number and after"`
-	EndLine    int     `json:"end_line,omitempty" jsonschema:"Optional: restrict search to this line number and before"`
-	Threshold  float64 `json:"threshold,omitempty" jsonschema:"Similarity threshold (0.0-1.0) for fuzzy matching, default 0.95"`
-	Append     bool    `json:"append,omitempty" jsonschema:"If true, append new_content to the end of the file (ignores old_content)"`
+	//nolint:lll
+	Filename   string `json:"filename" jsonschema:"The absolute path to the file to edit. You MUST use absolute paths in multi-root workspaces."`
+	OldContent string `json:"old_content,omitempty" jsonschema:"Optional: The block of code to find (ignores whitespace)"`
+	NewContent string `json:"new_content" jsonschema:"The new code to insert"`
+	StartLine  int    `json:"start_line,omitempty" jsonschema:"Optional: restrict search to this line number and after"`
+	EndLine    int    `json:"end_line,omitempty" jsonschema:"Optional: restrict search to this line number and before"`
+	//nolint:lll
+	Threshold float64 `json:"threshold,omitempty" jsonschema:"Similarity threshold (0.0-1.0) for fuzzy matching, default 0.95"`
+	//nolint:lll
+	Append bool `json:"append,omitempty" jsonschema:"If true, append new_content to the end of the file (ignores old_content)"`
 }
 
 // Params defines the input parameters for the smart_edit tool.
@@ -56,9 +61,37 @@ func toolHandler(ctx context.Context, req *mcp.CallToolRequest, args Params) (*m
 	if req != nil {
 		session = req.Session
 	}
-	edits := args.Edits
-	if len(edits) == 0 && args.Filename != "" {
-		edits = []FileEdit{
+	edits := prepareEdits(args)
+	if len(edits) == 0 {
+		return errorResult("at least one edit transaction must be specified"), nil, nil
+	}
+
+	backups := make(map[string][]byte)
+	newlyCreated := make(map[string]bool)
+	currentContents := make(map[string][]byte)
+
+	if err := backupFiles(session, edits, backups, newlyCreated, currentContents); err != nil {
+		return errorResult(err.Error()), nil, nil
+	}
+
+	if errResult := applyMemoryEdits(session, edits, newlyCreated, currentContents); errResult != nil {
+		return errResult, nil, nil
+	}
+
+	if errResult := autoFormatContents(currentContents); errResult != nil {
+		return errResult, nil, nil
+	}
+
+	res, err := writeAndVerify(ctx, session, currentContents, backups, newlyCreated)
+	return res, nil, err
+}
+
+func prepareEdits(args Params) []FileEdit {
+	if len(args.Edits) > 0 {
+		return args.Edits
+	}
+	if args.Filename != "" {
+		return []FileEdit{
 			{
 				Filename:   args.Filename,
 				OldContent: args.OldContent,
@@ -70,21 +103,20 @@ func toolHandler(ctx context.Context, req *mcp.CallToolRequest, args Params) (*m
 			},
 		}
 	}
+	return nil
+}
 
-	if len(edits) == 0 {
-		return errorResult("at least one edit transaction must be specified"), nil, nil
-	}
-
-	// Maps to hold file backups and current contents
-	backups := make(map[string][]byte)
-	newlyCreated := make(map[string]bool)
-	currentContents := make(map[string][]byte)
-
-	// 1. Back up all files and prepare initial contents
+func backupFiles(
+	session *mcp.ServerSession,
+	edits []FileEdit,
+	backups map[string][]byte,
+	newlyCreated map[string]bool,
+	currentContents map[string][]byte,
+) error {
 	for _, edit := range edits {
 		absPath, err := roots.Global.Validate(session, edit.Filename)
 		if err != nil {
-			return errorResult(err.Error()), nil, nil
+			return err
 		}
 
 		if _, alreadyLoaded := currentContents[absPath]; !alreadyLoaded {
@@ -95,7 +127,7 @@ func toolHandler(ctx context.Context, req *mcp.CallToolRequest, args Params) (*m
 					currentContents[absPath] = []byte("")
 					backups[absPath] = nil
 				} else {
-					return errorResult(fmt.Sprintf("failed to read file %s: %v", edit.Filename, err)), nil, nil
+					return fmt.Errorf("failed to read file %s: %v", edit.Filename, err)
 				}
 			} else {
 				currentContents[absPath] = content
@@ -103,8 +135,15 @@ func toolHandler(ctx context.Context, req *mcp.CallToolRequest, args Params) (*m
 			}
 		}
 	}
+	return nil
+}
 
-	// 2. Apply edits sequentially in memory
+func applyMemoryEdits(
+	session *mcp.ServerSession,
+	edits []FileEdit,
+	newlyCreated map[string]bool,
+	currentContents map[string][]byte,
+) *mcp.CallToolResult {
 	for _, edit := range edits {
 		absPath, _ := roots.Global.Validate(session, edit.Filename)
 		original := string(currentContents[absPath])
@@ -120,101 +159,181 @@ func toolHandler(ctx context.Context, req *mcp.CallToolRequest, args Params) (*m
 		}
 
 		var newContent string
-		if newlyCreated[absPath] && len(original) == 0 {
+		switch {
+		case newlyCreated[absPath] && len(original) == 0:
 			newContent = edit.NewContent
-		} else if edit.Append || edit.OldContent == "" {
+		case edit.Append || edit.OldContent == "":
 			if len(original) > 0 && !strings.HasSuffix(original, "\n") {
 				newContent = original + "\n" + edit.NewContent
 			} else {
 				newContent = original + edit.NewContent
 			}
-		} else {
-			searchStart := 0
-			searchEnd := len(original)
-			if edit.StartLine > 0 || edit.EndLine > 0 {
-				s, e, err := shared.GetLineOffsets(original, edit.StartLine, edit.EndLine)
-				if err != nil {
-					return errorResult(fmt.Sprintf("line range error in %s: %v", edit.Filename, err)), nil, nil
-				}
-				searchStart = s
-				searchEnd = e
+		default:
+			var errResult *mcp.CallToolResult
+			newContent, errResult = applySingleMemoryEdit(edit, original, threshold)
+			if errResult != nil {
+				return errResult
 			}
-
-			searchArea := original[searchStart:searchEnd]
-			matchStart, matchEnd, score := findBestMatch(searchArea, edit.OldContent)
-
-			if score < threshold {
-				bestMatch := ""
-				if matchStart < matchEnd && matchEnd <= len(searchArea) {
-					bestMatch = searchArea[matchStart:matchEnd]
-				}
-
-				globalMatchStart := searchStart + matchStart
-				globalMatchEnd := searchStart + matchEnd
-				bestStartLine := shared.GetLineFromOffset(original, globalMatchStart)
-				bestEndLine := shared.GetLineFromOffset(original, globalMatchEnd)
-
-				return errorResult(fmt.Sprintf("match not found with sufficient confidence in %s (score: %.2f < %.2f).\n\nBest Match Found (Lines %d-%d):\n```go\n%s\n```\n\nSuggestions: verify old_content or lower threshold.", edit.Filename, score, threshold, bestStartLine, bestEndLine, bestMatch)), nil, nil
-			}
-
-			matchStart += searchStart
-			matchEnd += searchStart
-			newContent = original[:matchStart] + edit.NewContent + original[matchEnd:]
 		}
 
 		currentContents[absPath] = []byte(newContent)
 	}
+	return nil
+}
 
-	// 3. Auto-Format & Import check (GO ONLY)
+func applySingleMemoryEdit(edit FileEdit, original string, threshold float64) (string, *mcp.CallToolResult) {
+	searchStart := 0
+	searchEnd := len(original)
+	if edit.StartLine > 0 || edit.EndLine > 0 {
+		s, e, err := shared.GetLineOffsets(original, edit.StartLine, edit.EndLine)
+		if err != nil {
+			return "", errorResult(fmt.Sprintf("line range error in %s: %v", edit.Filename, err))
+		}
+		searchStart = s
+		searchEnd = e
+	}
+
+	searchArea := original[searchStart:searchEnd]
+	matchStart, matchEnd, score := findBestMatch(searchArea, edit.OldContent)
+
+	if score < threshold {
+		bestMatch := ""
+		if matchStart < matchEnd && matchEnd <= len(searchArea) {
+			bestMatch = searchArea[matchStart:matchEnd]
+		}
+
+		globalMatchStart := searchStart + matchStart
+		globalMatchEnd := searchStart + matchEnd
+		bestStartLine := shared.GetLineFromOffset(original, globalMatchStart)
+		bestEndLine := shared.GetLineFromOffset(original, globalMatchEnd)
+
+		return "", errorResult(fmt.Sprintf(
+			"match not found with sufficient confidence in %s (score: %.2f < %.2f).\n\n"+
+				"Best Match Found (Lines %d-%d):\n```go\n%s\n```\n\n"+
+				"Suggestions: verify old_content or lower threshold.",
+			edit.Filename, score, threshold, bestStartLine, bestEndLine, bestMatch))
+	}
+
+	matchStart += searchStart
+	matchEnd += searchStart
+	return original[:matchStart] + edit.NewContent + original[matchEnd:], nil
+}
+
+func autoFormatContents(currentContents map[string][]byte) *mcp.CallToolResult {
 	for absPath, contentBytes := range currentContents {
 		if strings.HasSuffix(absPath, ".go") {
 			formatted, err := imports.Process(absPath, contentBytes, nil)
 			if err != nil {
 				snippet := shared.ExtractErrorSnippet(string(contentBytes), err)
-				return errorResult(fmt.Sprintf("edit produced invalid Go code in %s: %v\n\nContext:\n```go\n%s\n```\nHint: Ensure NewContent is syntactically valid in context.", filepath.Base(absPath), err, snippet)), nil, nil
+				return errorResult(fmt.Sprintf(
+					"edit produced invalid Go code in %s: %v\n\nContext:\n```go\n%s\n```\n"+
+						"Hint: Ensure NewContent is syntactically valid in context.",
+					filepath.Base(absPath), err, snippet))
 			}
 			currentContents[absPath] = formatted
 		}
 	}
+	return nil
+}
 
-	// 4. Temporary Write to Disk for Verification Gate
+func commitWrite(path string, content []byte, isNew bool) (err error) {
+	var f *os.File
+	if isNew {
+		// os.Create opens with O_RDWR|O_CREATE|O_TRUNC and mode 0666,
+		// delegating file permissions entirely to the OS umask.
+		f, err = os.Create(path)
+	} else {
+		// Open the existing file for writing/truncating without O_CREATE.
+		// Passing 0 permission has no effect and avoids hardcoding modes.
+		f, err = os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0)
+	}
+	if err != nil {
+		return err
+	}
+	defer func() {
+		closeErr := f.Close()
+		if err == nil {
+			err = closeErr
+		}
+	}()
+	_, err = f.Write(content)
+	return err
+}
+
+func writeContents(
+	currentContents map[string][]byte,
+	backups map[string][]byte,
+	newlyCreated map[string]bool,
+) (*mcp.CallToolResult, error) {
 	for absPath, contentBytes := range currentContents {
 		if newlyCreated[absPath] {
-			if err := os.MkdirAll(filepath.Dir(absPath), 0755); err != nil {
-				rollback(backups, newlyCreated)
-				return errorResult(fmt.Sprintf("failed to create directory: %v", err)), nil, nil
+			if err := os.MkdirAll(filepath.Dir(absPath), 0750); err != nil {
+				rbErr := rollback(backups, newlyCreated)
+				if rbErr != nil {
+					msg := fmt.Sprintf("failed to create directory: %v (rollback failure: %v)", err, rbErr)
+					return errorResult(msg), errors.Join(err, rbErr)
+				}
+				return errorResult(fmt.Sprintf("failed to create directory: %v", err)), err
 			}
 		}
-		if err := os.WriteFile(absPath, contentBytes, 0644); err != nil {
-			rollback(backups, newlyCreated)
-			return errorResult(fmt.Sprintf("failed to write temporary file %s: %v", filepath.Base(absPath), err)), nil, nil
+		if err := commitWrite(absPath, contentBytes, newlyCreated[absPath]); err != nil {
+			rbErr := rollback(backups, newlyCreated)
+			if rbErr != nil {
+				msg := fmt.Sprintf("failed to write temporary file %s: %v (rollback failure: %v)",
+					filepath.Base(absPath), err, rbErr)
+				return errorResult(msg), errors.Join(err, rbErr)
+			}
+			msg := fmt.Sprintf("failed to write temporary file %s: %v", filepath.Base(absPath), err)
+			return errorResult(msg), err
 		}
 	}
+	return nil, nil
+}
 
-	// 5. Run Compiler Gate (gopls check) on the entire workspace
+func writeAndVerify(
+	ctx context.Context,
+	session *mcp.ServerSession,
+	currentContents map[string][]byte,
+	backups map[string][]byte,
+	newlyCreated map[string]bool,
+) (*mcp.CallToolResult, error) {
+	if res, err := writeContents(currentContents, backups, newlyCreated); err != nil || res != nil {
+		return res, err
+	}
+
 	workspaceRoot := getWorkspaceRoot(session)
 
-	goFiles, err := getAllGoFiles(workspaceRoot)
-	if err != nil {
-		rollback(backups, newlyCreated)
-		return errorResult(fmt.Sprintf("failed to collect workspace Go files: %v", err)), nil, nil
+	goFiles, walkErr := getAllGoFiles(workspaceRoot)
+	if walkErr != nil {
+		rbErr := rollback(backups, newlyCreated)
+		if rbErr != nil {
+			msg := fmt.Sprintf("failed to collect workspace Go files: %v (rollback failure: %v)", walkErr, rbErr)
+			return errorResult(msg), errors.Join(walkErr, rbErr)
+		}
+		return errorResult(fmt.Sprintf("failed to collect workspace Go files: %v", walkErr)), walkErr
 	}
 
 	if len(goFiles) > 0 {
 		args := append([]string{"check"}, goFiles...)
 		cmd := exec.CommandContext(ctx, "gopls", args...)
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			// Compiler check failed! Roll back all edits immediately.
-			rollback(backups, newlyCreated)
+		cmd.Dir = workspaceRoot
+		out, cmdErr := cmd.CombinedOutput()
+		if cmdErr != nil {
+			rbErr := rollback(backups, newlyCreated)
 
 			errorOutput := string(out)
 			suggestions := findSuggestions(ctx, errorOutput)
-			return errorResult(fmt.Sprintf("Post-edit diagnostics check failed. All changes rolled back.\n\nErrors:\n%s%s", errorOutput, suggestions)), nil, nil
+			if rbErr != nil {
+				msg := fmt.Sprintf("Post-edit diagnostics check failed. All changes rolled back.\n\n"+
+					"Errors:\n%s%s\n\nRollback Failure:\n%v", errorOutput, suggestions, rbErr)
+				return errorResult(msg), errors.Join(cmdErr, rbErr)
+			}
+			msg := fmt.Sprintf("Post-edit diagnostics check failed. All changes rolled back.\n\n"+
+				"Errors:\n%s%s", errorOutput, suggestions)
+			return errorResult(msg), cmdErr
 		}
 	}
 
-	// 6. Return success
 	var editedFiles []string
 	for absPath := range currentContents {
 		editedFiles = append(editedFiles, filepath.Base(absPath))
@@ -223,18 +342,24 @@ func toolHandler(ctx context.Context, req *mcp.CallToolRequest, args Params) (*m
 		Content: []mcp.Content{
 			&mcp.TextContent{Text: fmt.Sprintf("Successfully edited files: %s", strings.Join(editedFiles, ", "))},
 		},
-	}, nil, nil
+	}, nil
 }
 
 // rollback restores files to their original state or removes newly created files.
-func rollback(backups map[string][]byte, newlyCreated map[string]bool) {
+func rollback(backups map[string][]byte, newlyCreated map[string]bool) error {
+	var errs []error
 	for path, origContent := range backups {
 		if newlyCreated[path] {
-			_ = os.Remove(path)
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				errs = append(errs, fmt.Errorf("rollback: failed to remove %s: %w", path, err))
+			}
 		} else {
-			_ = os.WriteFile(path, origContent, 0644)
+			if err := commitWrite(path, origContent, false); err != nil {
+				errs = append(errs, fmt.Errorf("rollback: failed to restore %s: %w", path, err))
+			}
 		}
 	}
+	return errors.Join(errs...)
 }
 
 // getAllGoFiles collects all relevant Go files to check, avoiding skills and assets directories.
@@ -288,12 +413,14 @@ func findSuggestions(ctx context.Context, errorMsg string) string {
 
 		if badSymbol != "" {
 			cmd := exec.CommandContext(ctx, "gopls", "symbols", filePath)
+			cmd.Dir = filepath.Dir(filePath)
 			out, err := cmd.CombinedOutput()
 			if err == nil {
 				knownSymbols := parseGoplsSymbols(string(out))
 				bestSymbol, bestDist := findClosestSymbol(badSymbol, knownSymbols)
 				if bestSymbol != "" && bestDist <= 4 {
-					suggestions = append(suggestions, fmt.Sprintf("- In %s: Did you mean '%s' instead of '%s'?", filepath.Base(filePath), bestSymbol, badSymbol))
+					suggestions = append(suggestions, fmt.Sprintf("- In %s: Did you mean '%s' instead of '%s'?",
+						filepath.Base(filePath), bestSymbol, badSymbol))
 				}
 			}
 		}
@@ -377,6 +504,19 @@ func findBestMatch(content, search string) (int, int, float64) {
 		return 0, len(content), score
 	}
 
+	candidates := collectCandidates(normContent, normContentRunes, searchRunes, searchLen)
+	bestScore, bestStartIdx, bestEndIdx := evaluateCandidates(normContentRunes, normSearch, searchLen, candidates)
+
+	if bestScore > 0 {
+		start := mapped[bestStartIdx].offset
+		end := mapped[bestEndIdx-1].offset + 1
+		return start, end, bestScore
+	}
+
+	return 0, 0, 0
+}
+
+func collectCandidates(normContent string, normContentRunes, searchRunes []rune, searchLen int) map[int]int {
 	seedLen := 16
 	step := 8
 
@@ -418,7 +558,15 @@ func findBestMatch(content, search string) (int, int, float64) {
 			checkSeed(tailOffset)
 		}
 	}
+	return candidates
+}
 
+func evaluateCandidates(
+	normContentRunes []rune,
+	normSearch string,
+	searchLen int,
+	candidates map[int]int,
+) (float64, int, int) {
 	bestScore := 0.0
 	bestStartIdx := 0
 	bestEndIdx := 0
@@ -438,14 +586,7 @@ func findBestMatch(content, search string) (int, int, float64) {
 			bestEndIdx = endIdx
 		}
 	}
-
-	if bestScore > 0 {
-		start := mapped[bestStartIdx].offset
-		end := mapped[bestEndIdx-1].offset + 1
-		return start, end, bestScore
-	}
-
-	return 0, 0, 0
+	return bestScore, bestStartIdx, bestEndIdx
 }
 
 func isWhitespace(r rune) bool {
